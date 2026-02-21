@@ -1,0 +1,142 @@
+{
+	"name": "open-wire",
+	"displayName": "OpenWire",
+	"description": "Expose VS Code language models as an OpenAI-compatible REST API for agents and tools",
+	"version": "0.1.0",
+	"publisher": "openclaw",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/openclaw/open-wire"
+	},
+	"engines": {
+		"vscode": "^1.95.0"
+	},
+	"categories": [
+		"AI",
+		"Other"
+	],
+	"keywords": [
+		"open-wire",
+		"api",
+		"rest",
+		"openai",
+		"language-model",
+		"agent",
+		"copilot"
+	],
+	"main": "./dist/extension.js",
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"extensionDependencies": [
+		"github.copilot-chat"
+	],
+	"contributes": {
+		"commands": [
+			{
+				"command": "open-wire.startServer",
+				"title": "OpenWire: Start Server"
+			},
+			{
+				"command": "open-wire.stopServer",
+				"title": "OpenWire: Stop Server"
+			},
+			{
+				"command": "open-wire.restartServer",
+				"title": "OpenWire: Restart Server"
+			},
+			{
+				"command": "open-wire.toggleServer",
+				"title": "OpenWire: Toggle Server"
+			}
+		],
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "open-wire",
+					"title": "OpenWire",
+					"icon": "media/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"open-wire": [
+				{
+					"type": "webview",
+					"id": "open-wire.sidebar",
+					"name": "Controls"
+				}
+			]
+		},
+		"configuration": {
+			"title": "OpenWire",
+			"properties": {
+				"openWire.server.autoStart": {
+					"type": "boolean",
+					"default": true,
+					"description": "Automatically start the relay server when VS Code launches"
+				},
+				"openWire.server.host": {
+					"type": "string",
+					"default": "127.0.0.1",
+					"description": "Host address to bind the server to"
+				},
+				"openWire.server.port": {
+					"type": "number",
+					"default": 3030,
+					"description": "Port number for the relay server"
+				},
+				"openWire.server.apiKey": {
+					"type": "string",
+					"default": "",
+					"description": "Optional API key for request authentication"
+				},
+				"openWire.server.defaultModel": {
+					"type": "string",
+					"default": "",
+					"description": "Default model ID when none is specified in the request"
+				},
+				"openWire.server.defaultSystemPrompt": {
+					"type": "string",
+					"default": "",
+					"description": "System prompt prepended to all requests if no system message is present"
+				},
+				"openWire.server.maxConcurrentRequests": {
+					"type": "number",
+					"default": 4,
+					"description": "Maximum number of concurrent requests"
+				},
+				"openWire.server.rateLimitPerMinute": {
+					"type": "number",
+					"default": 60,
+					"description": "Maximum requests per minute"
+				},
+				"openWire.server.requestTimeoutSeconds": {
+					"type": "number",
+					"default": 300,
+					"description": "Request timeout in seconds"
+				},
+				"openWire.server.enableLogging": {
+					"type": "boolean",
+					"default": false,
+					"description": "Enable detailed logging to the output channel"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"build": "node esbuild.js",
+		"watch": "node esbuild.js --watch",
+		"vscode:prepublish": "node esbuild.js --production",
+		"package": "vsce package",
+		"lint": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@types/vscode": "^1.95.0",
+		"@vscode/vsce": "^3.0.0",
+		"esbuild": "^0.24.0",
+		"typescript": "^5.7.0"
+	}
+}
