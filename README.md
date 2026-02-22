@@ -14,10 +14,11 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 <img src="https://img.shields.io/badge/Copilot-000?style=for-the-badge&logo=githubcopilot&logoColor=white" alt="GitHub Copilot" />
 <img src="https://img.shields.io/badge/Ollama-000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama" />
 
-<br /><br />
+<br />
 
-[![Install from Marketplace](https://img.shields.io/visual-studio-marketplace/v/lewiswigmore.open-wire?label=VS%20Marketplace&style=for-the-badge&logo=visualstudiocode&logoColor=white&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=lewiswigmore.open-wire)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/lewiswigmore.open-wire?style=for-the-badge&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=lewiswigmore.open-wire)
+<a href="https://marketplace.visualstudio.com/items?itemName=lewiswigmore.open-wire">
+<img src="https://img.shields.io/badge/Install%20on%20VS%20Marketplace-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Install on VS Marketplace" />
+</a>
 
 </div>
 
