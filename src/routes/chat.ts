@@ -118,17 +118,15 @@ export async function processChatCompletion(
 	const lmMessages = toVscodeMessages(messages);
 	const options: vscode.LanguageModelChatRequestOptions = {};
 
-	// Forward tools if provided (guard: LanguageModelToolInputSchema may not exist in older VS Code)
-	if (payload?.tools && Array.isArray(payload.tools) && payload.tools.length > 0
-		&& typeof vscode.LanguageModelToolInformation === 'function'
-		&& typeof vscode.LanguageModelToolInputSchema?.from === 'function') {
+	// Forward tools as plain LanguageModelChatTool objects
+	if (payload?.tools && Array.isArray(payload.tools) && payload.tools.length > 0) {
 		options.tools = payload.tools.map((t: any) => {
 			const fn = t.function || t;
-			return new vscode.LanguageModelToolInformation(
-				fn.name,
-				fn.description || '',
-				fn.parameters ? vscode.LanguageModelToolInputSchema.from(fn.parameters) : vscode.LanguageModelToolInputSchema.from({}),
-			);
+			return {
+				name: fn.name,
+				description: fn.description || '',
+				inputSchema: fn.parameters || {},
+			};
 		});
 		const tc = payload.tool_choice;
 		options.toolMode = (tc === 'required' || tc === 'any')
@@ -219,16 +217,14 @@ export async function processStreamingChatCompletion(
 	const lmMessages = toVscodeMessages(messages);
 	const options: vscode.LanguageModelChatRequestOptions = {};
 
-	if (payload?.tools && Array.isArray(payload.tools) && payload.tools.length > 0
-		&& typeof vscode.LanguageModelToolInformation === 'function'
-		&& typeof vscode.LanguageModelToolInputSchema?.from === 'function') {
+	if (payload?.tools && Array.isArray(payload.tools) && payload.tools.length > 0) {
 		options.tools = payload.tools.map((t: any) => {
 			const fn = t.function || t;
-			return new vscode.LanguageModelToolInformation(
-				fn.name,
-				fn.description || '',
-				fn.parameters ? vscode.LanguageModelToolInputSchema.from(fn.parameters) : vscode.LanguageModelToolInputSchema.from({}),
-			);
+			return {
+				name: fn.name,
+				description: fn.description || '',
+				inputSchema: fn.parameters || {},
+			};
 		});
 		const tc = payload.tool_choice;
 		options.toolMode = (tc === 'required' || tc === 'any')
