@@ -2,7 +2,7 @@
 	"name": "open-wire",
 	"displayName": "OpenWire",
 	"description": "Expose VS Code language models as an OpenAI-compatible REST API for agents and tools",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"publisher": "lewiswigmore",
 	"license": "MIT",
 	"icon": "media/icon.png",
@@ -140,13 +140,15 @@
 		"watch": "node esbuild.js --watch",
 		"vscode:prepublish": "node esbuild.js --production",
 		"package": "vsce package",
-		"lint": "tsc --noEmit"
+		"lint": "tsc --noEmit",
+		"test": "vitest run"
 	},
 	"devDependencies": {
 		"@types/node": "^25.3.2",
 		"@types/vscode": "^1.95.0",
 		"@vscode/vsce": "^3.0.0",
 		"esbuild": "^0.27.3",
-		"typescript": "^5.7.0"
+		"typescript": "^5.7.0",
+		"vitest": "^4.0.0"
 	}
 }

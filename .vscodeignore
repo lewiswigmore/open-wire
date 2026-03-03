@@ -7,5 +7,7 @@ src/**
 .gitignore
 esbuild.js
 tsconfig.json
+vitest.config.*
 **/*.map
 **/*.ts
+**/*.test.ts
