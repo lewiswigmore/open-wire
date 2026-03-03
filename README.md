@@ -29,6 +29,8 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 - **OpenAI-compatible** — `/v1/chat/completions`, `/v1/models` with streaming (SSE)
 - **Auto-discovery** — finds every language model registered in VS Code
 - **Tool forwarding** — pass OpenAI-format tools, get `tool_calls` back
+- **Multi-provider content handling** — normalises Anthropic-style content arrays, OpenAI strings, and Gemini parts into a consistent format
+- **XML tool call fallback** — when native tool forwarding isn't available, parses Claude's XML `<function_calls>` output into proper `tool_calls` objects
 - **Rate limiting** — configurable per-minute request cap
 - **API key auth** — optional Bearer token authentication
 - **Zero dependencies** — pure Node.js HTTP, no Express, no frameworks
@@ -44,6 +46,21 @@ Any model available through VS Code's Language Model API is automatically expose
 - Any other models registered via the VS Code Language Model API
 
 Run `GET /v1/models` to see what's available in your setup.
+
+## Provider Compatibility
+
+OpenWire normalises differences between providers so callers always get a consistent OpenAI-format response:
+
+| Provider | Content format | Tool calling | Status |
+|----------|---------------|-------------|--------|
+| **Claude** (Anthropic) | Array of `{"type":"text","text":"..."}` parts | Native via VS Code API; XML `<function_calls>` fallback parsed automatically | ✅ Full support |
+| **GPT** (OpenAI) | Plain string | Native `tool_calls` via VS Code API | ✅ Full support |
+| **Gemini** (Google) | Plain string or parts array | Native via VS Code API | ✅ Full support |
+| **Ollama** (local) | Plain string | Depends on model capability | ✅ Supported |
+
+**Content normalisation** — Incoming messages with `content` as an array of content parts (Anthropic format), a plain string (OpenAI/Gemini), or null are all normalised to plain strings before forwarding to the VS Code LM API.
+
+**Tool call fallback** — When the VS Code LM API can't forward tools natively (e.g. older VS Code versions), Claude may output tool calls as XML. OpenWire detects and converts these to standard `tool_calls` objects in the response, so callers never see raw XML.
 
 ## Quick Start
 

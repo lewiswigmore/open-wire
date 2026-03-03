@@ -11,12 +11,25 @@ export interface ChatMessage {
 	tool_call_id?: string;
 }
 
+/** Extract plain text from content that may be a string, array of content parts, or other format */
+function normalizeContent(content: unknown): string {
+	if (typeof content === 'string') return content;
+	if (Array.isArray(content)) {
+		return content
+			.filter((p: any) => typeof p === 'string' || p?.type === 'text')
+			.map((p: any) => typeof p === 'string' ? p : (p?.text ?? ''))
+			.join('');
+	}
+	if (content == null) return '';
+	return String(content);
+}
+
 /** Normalise incoming messages to a flat role+content array */
 export function normalizeMessages(raw: unknown): ChatMessage[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.map(m => ({
 		role: m.role === 'developer' ? 'system' : m.role,
-		content: m.content,
+		content: normalizeContent(m.content),
 		tool_calls: m.tool_calls,
 		tool_call_id: m.tool_call_id,
 	}));
@@ -55,6 +68,32 @@ function injectSystemPrompt(msgs: ChatMessage[], prompt: string): ChatMessage[] 
 	if (!prompt) return msgs;
 	if (msgs.some(m => m.role === 'system')) return msgs;
 	return [{ role: 'system', content: prompt }, ...msgs];
+}
+
+/**
+ * Parse XML-style function calls from model text output.
+ * Claude falls back to this format when native tool calling isn't available.
+ */
+function parseXmlToolCalls(text: string): { cleanedText: string; toolCalls: any[] } {
+	const toolCalls: any[] = [];
+	const cleaned = text.replace(
+		/<function_calls>\s*([\s\S]*?)<\/function_calls>/g,
+		(_match, block: string) => {
+			for (const inv of block.matchAll(/<invoke\s+name="([^"]+)">\s*([\s\S]*?)<\/invoke>/g)) {
+				const params: Record<string, string> = {};
+				for (const p of inv[2].matchAll(/<parameter\s+name="([^"]+)">([\s\S]*?)<\/parameter>/g)) {
+					params[p[1]] = p[2];
+				}
+				toolCalls.push({
+					id: `call_${randomUUID()}`,
+					type: 'function',
+					function: { name: inv[1], arguments: JSON.stringify(params) },
+				});
+			}
+			return '';
+		},
+	);
+	return { cleanedText: cleaned.trim(), toolCalls };
 }
 
 /** Non-streaming chat completion */
@@ -113,6 +152,13 @@ export async function processChatCompletion(
 					function: { name: part.name, arguments: JSON.stringify(part.input) },
 				});
 			}
+		}
+
+		// If no native tool calls detected, check for XML-format function calls in text
+		if (toolCalls.length === 0 && content.includes('<function_calls>')) {
+			const parsed = parseXmlToolCalls(content);
+			toolCalls.push(...parsed.toolCalls);
+			content = parsed.cleanedText;
 		}
 
 		const requestId = `chatcmpl-${randomUUID()}`;
@@ -209,57 +255,145 @@ export async function processStreamingChatCompletion(
 
 	try {
 		const response = await lm.sendRequest(lmMessages, options, cts.token);
+		const toolsForwarded = !!(options.tools && options.tools.length > 0);
+		const needsToolParsing = !toolsForwarded && payload?.tools?.length > 0;
 
-		for await (const part of response.stream) {
-			if (cts.token.isCancellationRequested) break;
-
-			if (part instanceof vscode.LanguageModelTextPart) {
-				const chunk = {
-					id: requestId,
-					object: 'chat.completion.chunk',
-					created,
-					model: modelId,
-					choices: [{
-						index: 0,
-						delta: { content: part.value },
-						finish_reason: null,
-					}],
-				};
-				res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-			} else if (part instanceof vscode.LanguageModelToolCallPart) {
-				const chunk = {
-					id: requestId,
-					object: 'chat.completion.chunk',
-					created,
-					model: modelId,
-					choices: [{
-						index: 0,
-						delta: {
-							tool_calls: [{
-								index: 0,
-								id: part.callId || `call_${randomUUID()}`,
-								type: 'function',
-								function: { name: part.name, arguments: JSON.stringify(part.input) },
-							}],
-						},
-						finish_reason: null,
-					}],
-				};
-				res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+		if (needsToolParsing) {
+			// Buffer mode: tools were requested but couldn't be forwarded natively.
+			// Collect the full response and parse XML-format function calls from text.
+			let content = '';
+			for await (const part of response.stream) {
+				if (cts.token.isCancellationRequested) break;
+				if (part instanceof vscode.LanguageModelTextPart) {
+					content += part.value;
+				}
 			}
-		}
 
-		// Final chunk
-		if (!cts.token.isCancellationRequested) {
-			const final = {
-				id: requestId,
-				object: 'chat.completion.chunk',
-				created,
-				model: modelId,
-				choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
-			};
-			res.write(`data: ${JSON.stringify(final)}\n\n`);
-			res.write('data: [DONE]\n\n');
+			if (!cts.token.isCancellationRequested) {
+				const parsed = content.includes('<function_calls>')
+					? parseXmlToolCalls(content)
+					: { cleanedText: content, toolCalls: [] as any[] };
+
+				if (parsed.cleanedText) {
+					const chunk = {
+						id: requestId,
+						object: 'chat.completion.chunk',
+						created,
+						model: modelId,
+						choices: [{
+							index: 0,
+							delta: { role: 'assistant' as const, content: parsed.cleanedText },
+							finish_reason: null,
+						}],
+					};
+					res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+				}
+
+				for (let i = 0; i < parsed.toolCalls.length; i++) {
+					const tc = parsed.toolCalls[i];
+					const chunk = {
+						id: requestId,
+						object: 'chat.completion.chunk',
+						created,
+						model: modelId,
+						choices: [{
+							index: 0,
+							delta: {
+								tool_calls: [{
+									index: i,
+									id: tc.id,
+									type: 'function',
+									function: tc.function,
+								}],
+							},
+							finish_reason: null,
+						}],
+					};
+					res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+				}
+
+				const final = {
+					id: requestId,
+					object: 'chat.completion.chunk',
+					created,
+					model: modelId,
+					choices: [{
+						index: 0,
+						delta: {},
+						finish_reason: parsed.toolCalls.length > 0 ? 'tool_calls' : 'stop',
+					}],
+				};
+				res.write(`data: ${JSON.stringify(final)}\n\n`);
+				res.write('data: [DONE]\n\n');
+			}
+		} else {
+			// Normal streaming mode with native tool calling support
+			let hasToolCalls = false;
+			let toolCallIndex = 0;
+			let isFirstDelta = true;
+
+			for await (const part of response.stream) {
+				if (cts.token.isCancellationRequested) break;
+
+				if (part instanceof vscode.LanguageModelTextPart) {
+					const chunk = {
+						id: requestId,
+						object: 'chat.completion.chunk',
+						created,
+						model: modelId,
+						choices: [{
+							index: 0,
+							delta: {
+								...(isFirstDelta && { role: 'assistant' as const }),
+								content: part.value,
+							},
+							finish_reason: null,
+						}],
+					};
+					isFirstDelta = false;
+					res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+				} else if (part instanceof vscode.LanguageModelToolCallPart) {
+					hasToolCalls = true;
+					const chunk = {
+						id: requestId,
+						object: 'chat.completion.chunk',
+						created,
+						model: modelId,
+						choices: [{
+							index: 0,
+							delta: {
+								...(isFirstDelta && { role: 'assistant' as const }),
+								tool_calls: [{
+									index: toolCallIndex++,
+									id: part.callId || `call_${randomUUID()}`,
+									type: 'function',
+									function: { name: part.name, arguments: JSON.stringify(part.input) },
+								}],
+							},
+							finish_reason: null,
+						}],
+					};
+					isFirstDelta = false;
+					res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+				}
+			}
+
+			// Final chunk
+			if (!cts.token.isCancellationRequested) {
+				const final = {
+					id: requestId,
+					object: 'chat.completion.chunk',
+					created,
+					model: modelId,
+					choices: [{
+						index: 0,
+						delta: {},
+						finish_reason: hasToolCalls ? 'tool_calls' : 'stop',
+					}],
+				};
+				res.write(`data: ${JSON.stringify(final)}\n\n`);
+				res.write('data: [DONE]\n\n');
+			}
 		}
 	} catch (err: any) {
 		if (!cts.token.isCancellationRequested) {
