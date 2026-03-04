@@ -2,7 +2,7 @@
 	"name": "open-wire",
 	"displayName": "OpenWire",
 	"description": "Expose VS Code language models as an OpenAI-compatible REST API for agents and tools",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"publisher": "lewiswigmore",
 	"license": "MIT",
 	"icon": "media/icon.png",

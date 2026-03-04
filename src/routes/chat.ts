@@ -45,17 +45,36 @@ function toVscodeMessages(msgs: ChatMessage[]): vscode.LanguageModelChatMessage[
 		switch (msg.role) {
 			case 'system':
 				return vscode.LanguageModelChatMessage.User(`[System]: ${text}`);
-			case 'assistant':
+			case 'assistant': {
 				if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-					const info = msg.tool_calls.map((tc: any) =>
-						`[Called function: ${tc.function?.name || tc.name}(${tc.function?.arguments || JSON.stringify(tc.arguments)})]`
-					).join('\n');
-					return vscode.LanguageModelChatMessage.Assistant(info);
+					const parts: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
+					// Preserve any text content the assistant produced before tool calls
+					if (text && text !== 'null' && text !== 'undefined') {
+						parts.push(new vscode.LanguageModelTextPart(text));
+					}
+					for (const tc of msg.tool_calls as any[]) {
+						const name = tc.function?.name || tc.name || 'unknown';
+						const rawArgs = tc.function?.arguments || tc.arguments;
+						const callId = tc.id || `call_${randomUUID()}`;
+						let input: object;
+						if (typeof rawArgs === 'string') {
+							try { input = JSON.parse(rawArgs); } catch { input = { _raw: rawArgs }; }
+						} else {
+							input = rawArgs ?? {};
+						}
+						parts.push(new vscode.LanguageModelToolCallPart(callId, name, input));
+					}
+					return vscode.LanguageModelChatMessage.Assistant(parts);
 				}
 				return vscode.LanguageModelChatMessage.Assistant(text);
+			}
 			case 'tool': {
-				const toolText = `[Tool result for ${msg.tool_call_id || 'unknown'}]: ${text}`;
-				return vscode.LanguageModelChatMessage.User(toolText);
+				const callId = msg.tool_call_id || 'unknown';
+				return vscode.LanguageModelChatMessage.User([
+					new vscode.LanguageModelToolResultPart(callId, [
+						new vscode.LanguageModelTextPart(text),
+					]),
+				]);
 			}
 			default:
 				return vscode.LanguageModelChatMessage.User(text);
