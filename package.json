@@ -160,7 +160,7 @@
 		"@types/vscode": "^1.115.0",
 		"@vscode/vsce": "^3.0.0",
 		"esbuild": "^0.28.0",
-		"typescript": "^5.7.0",
+		"typescript": "^6.0.2",
 		"vitest": "^4.1.4"
 	}
 }
