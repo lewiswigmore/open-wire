@@ -156,11 +156,11 @@
 		"test": "vitest run"
 	},
 	"devDependencies": {
-		"@types/node": "^25.3.2",
-		"@types/vscode": "^1.95.0",
+		"@types/node": "^25.6.0",
+		"@types/vscode": "^1.115.0",
 		"@vscode/vsce": "^3.0.0",
-		"esbuild": "^0.27.3",
+		"esbuild": "^0.28.0",
 		"typescript": "^6.0.2",
-		"vitest": "^4.0.0"
+		"vitest": "^4.1.4"
 	}
 }
