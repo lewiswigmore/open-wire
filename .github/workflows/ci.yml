@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate (Node ${{ matrix.node-version }})
+  build:
+    name: build (${{ matrix.node-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -32,11 +32,11 @@ jobs:
     name: Required checks
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    needs: [validate]
+    needs: [build]
     steps:
       - name: Ensure validation matrix passed
         run: |
-          if [ "${{ needs.validate.result }}" != "success" ]; then
+          if [ "${{ needs.build.result }}" != "success" ]; then
             echo "Validation matrix failed"
             exit 1
           fi
