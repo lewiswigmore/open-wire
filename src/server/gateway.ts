@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import type { AddressInfo } from 'net';
 import * as vscode from 'vscode';
 import { loadConfig, type ServerConfig } from './config';
+import { isOriginAllowed } from './security';
 import { listModels } from '../models';
 import { processChatCompletion, processStreamingChatCompletion } from '../routes/chat';
 
@@ -97,16 +98,17 @@ export class Gateway implements vscode.Disposable {
 	// ── Request handling ──────────────────────────────────────
 
 	private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-		this.setCors(res);
+		if (!this.setCors(req, res)) {
+			this.sendError(res, 403, 'Origin not allowed');
+			return;
+		}
 		if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
 		// Auth check
-		if (this.config.apiKey) {
-			const auth = req.headers['authorization'];
-			if (!auth || auth !== `Bearer ${this.config.apiKey}`) {
-				this.sendError(res, 401, 'Invalid or missing API key');
-				return;
-			}
+		const auth = req.headers['authorization'];
+		if (!auth || auth !== `Bearer ${this.config.apiKey}`) {
+			this.sendError(res, 401, 'Invalid or missing API key');
+			return;
 		}
 
 		// Rate limiting
@@ -253,10 +255,18 @@ export class Gateway implements vscode.Disposable {
 		});
 	}
 
-	private setCors(res: ServerResponse): void {
-		res.setHeader('Access-Control-Allow-Origin', '*');
+	private setCors(req: IncomingMessage, res: ServerResponse): boolean {
+		const origin = req.headers.origin;
+		if (typeof origin === 'string') {
+			if (!isOriginAllowed(origin, this.config.corsAllowedOrigins)) {
+				return false;
+			}
+			res.setHeader('Access-Control-Allow-Origin', origin);
+			res.setHeader('Vary', 'Origin');
+		}
 		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
+		return true;
 	}
 
 	private updateStatus(running: boolean): void {

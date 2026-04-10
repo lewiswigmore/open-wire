@@ -1,1 +1,17 @@
+# Default ownership
 * @lewiswigmore
+
+# Security and governance
+/.github/workflows/* @lewiswigmore
+/.github/CODEOWNERS @lewiswigmore
+/.github/dependabot.yml @lewiswigmore
+/.github/PULL_REQUEST_TEMPLATE.md @lewiswigmore
+/SECURITY.md @lewiswigmore
+
+# Runtime and API surface
+/src/server/* @lewiswigmore
+/src/routes/* @lewiswigmore
+/package.json @lewiswigmore
+
+# Project docs
+/README.md @lewiswigmore
