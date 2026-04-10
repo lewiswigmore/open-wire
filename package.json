@@ -99,8 +99,20 @@
 				},
 				"openWire.server.apiKey": {
 					"type": "string",
-					"default": "",
-					"description": "Optional API key for request authentication"
+					"default": "change-me-openwire-key",
+					"description": "Bearer token required for request authentication (set this to a unique local value)"
+				},
+				"openWire.server.corsAllowedOrigins": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						"http://localhost",
+						"http://127.0.0.1",
+						"http://[::1]"
+					],
+					"description": "Allowed browser origins for CORS. Entries without ports allow any port for that host."
 				},
 				"openWire.server.defaultModel": {
 					"type": "string",

@@ -1,9 +1,16 @@
 import * as vscode from 'vscode';
+import {
+	DEFAULT_API_KEY,
+	DEFAULT_CORS_ALLOWED_ORIGINS,
+	normalizeApiKey,
+	normalizeCorsAllowedOrigins,
+} from './security';
 
 export interface ServerConfig {
 	host: string;
 	port: number;
 	apiKey: string;
+	corsAllowedOrigins: string[];
 	defaultModel: string;
 	defaultSystemPrompt: string;
 	maxConcurrentRequests: number;
@@ -20,7 +27,10 @@ export function loadConfig(): ServerConfig {
 	return {
 		host: cfg.get<string>('host', '127.0.0.1'),
 		port: cfg.get<number>('port', 3030),
-		apiKey: cfg.get<string>('apiKey', ''),
+		apiKey: normalizeApiKey(cfg.get<string>('apiKey', DEFAULT_API_KEY)),
+		corsAllowedOrigins: normalizeCorsAllowedOrigins(
+			cfg.get<unknown>('corsAllowedOrigins', DEFAULT_CORS_ALLOWED_ORIGINS),
+		),
 		defaultModel: cfg.get<string>('defaultModel', ''),
 		defaultSystemPrompt: cfg.get<string>('defaultSystemPrompt', ''),
 		maxConcurrentRequests: cfg.get<number>('maxConcurrentRequests', 4),

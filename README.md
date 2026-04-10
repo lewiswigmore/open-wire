@@ -32,7 +32,8 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 - **Multi-provider content handling** — normalises Anthropic-style content arrays, OpenAI strings, and Gemini parts into a consistent format
 - **XML tool call fallback** — when native tool forwarding isn't available, parses Claude's XML `<function_calls>` output into proper `tool_calls` objects
 - **Rate limiting** — configurable per-minute request cap
-- **API key auth** — optional Bearer token authentication
+- **API key auth** — Bearer token authentication enabled by default
+- **Tight CORS defaults** — browser requests are limited to local loopback origins by default
 - **Zero dependencies** — pure Node.js HTTP, no Express, no frameworks
 
 ## Models
@@ -67,11 +68,15 @@ OpenWire normalises differences between providers so callers always get a consis
 Install from the VS Code Marketplace (or load the `.vsix`). The server starts automatically on `http://127.0.0.1:3030`.
 
 ```bash
+export OPENWIRE_API_KEY="change-me-openwire-key"
+
 # List available models
-curl http://localhost:3030/v1/models
+curl http://localhost:3030/v1/models \
+  -H "Authorization: Bearer $OPENWIRE_API_KEY"
 
 # Chat completion
 curl http://localhost:3030/v1/chat/completions \
+  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4.6",
@@ -80,6 +85,7 @@ curl http://localhost:3030/v1/chat/completions \
 
 # Streaming
 curl http://localhost:3030/v1/chat/completions \
+  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4.6",
@@ -107,7 +113,8 @@ All settings live under `openWire.server.*` in VS Code:
 | `autoStart` | `true` | Start server when VS Code launches |
 | `host` | `127.0.0.1` | Bind address |
 | `port` | `3030` | Port number |
-| `apiKey` | `""` | Bearer token for authentication |
+| `apiKey` | `"change-me-openwire-key"` | Bearer token required for authentication (change this locally) |
+| `corsAllowedOrigins` | `["http://localhost", "http://127.0.0.1", "http://[::1]"]` | Allowed browser origins for CORS |
 | `defaultModel` | `""` | Fallback model when none specified |
 | `defaultSystemPrompt` | `""` | Injected system prompt if none present |
 | `maxConcurrentRequests` | `4` | Concurrent request limit |
@@ -132,9 +139,8 @@ OpenWire can serve as a model provider for [OpenClaw](https://openclaw.ai) agent
     "providers": {
       "copilot-proxy": {
         "baseUrl": "http://localhost:3030/v1",
-        "apiKey": "n/a",
+        "apiKey": "change-me-openwire-key",
         "api": "openai-completions",
-        "authHeader": false,
         "models": [
           {
             "id": "claude-sonnet-4.6",
@@ -162,7 +168,7 @@ OpenWire can serve as a model provider for [OpenClaw](https://openclaw.ai) agent
 }
 ```
 
-Set `authHeader: false` since OpenWire handles authentication through VS Code's Copilot session — no API keys are needed. Run `curl http://localhost:3030/v1/models` to see all available model IDs.
+OpenWire now requires a Bearer token by default. Set a custom `openWire.server.apiKey` in VS Code and use the same value in OpenClaw.
 
 ## Architecture
 
