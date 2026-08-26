@@ -153,6 +153,39 @@ describe('validateJsonOutput', () => {
 		};
 		expect(validateJsonOutput('{}', format).ok).toBe(false);
 	});
+
+	// json_object promises an object, so a bare scalar or array is not a pass.
+	it.each(['null', '5', '"hi"', 'true', '[1,2]'])(
+		'rejects %s under json_object',
+		(output) => {
+			const result = validateJsonOutput(output, jsonObject);
+			expect(result.ok).toBe(false);
+			expect(result.ok === false && result.reason).toMatch(/requires a JSON object/);
+		},
+	);
+
+	it('still accepts an object under json_object', () => {
+		expect(validateJsonOutput('{"a":1}', jsonObject).ok).toBe(true);
+	});
+
+	it('allows a top-level array when a schema asks for one', () => {
+		const format: ResponseFormat = {
+			mode: 'json_schema', name: 'r', schema: { type: 'array', items: { type: 'number' } },
+		};
+		expect(validateJsonOutput('[1,2]', format).ok).toBe(true);
+	});
+});
+
+describe('extractJson performance', () => {
+	it('stays bounded on pathological unbalanced input', () => {
+		const started = Date.now();
+		expect(extractJson('{'.repeat(50_000))).toBeNull();
+		expect(Date.now() - started).toBeLessThan(500);
+	});
+
+	it('still finds JSON that follows unbalanced braces', () => {
+		expect(extractJson(`${'{'.repeat(5)} then {"a":1}`)?.value).toEqual({ a: 1 });
+	});
 });
 
 describe('instructions', () => {

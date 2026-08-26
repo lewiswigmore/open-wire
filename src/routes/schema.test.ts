@@ -33,6 +33,16 @@ describe('findUnsupportedKeywords', () => {
 		expect(findUnsupportedKeywords({ type: 'array', items: { $ref: '#/x' } }))
 			.toEqual(['items.$ref']);
 	});
+
+	it('rejects the tuple form of items, which is not enforced', () => {
+		expect(findUnsupportedKeywords({ type: 'array', items: [{ type: 'string' }] }))
+			.toEqual(['items (tuple form)']);
+	});
+
+	it('recurses into an additionalProperties sub-schema', () => {
+		expect(findUnsupportedKeywords({ type: 'object', additionalProperties: { $ref: '#/x' } }))
+			.toEqual(['additionalProperties.$ref']);
+	});
 });
 
 describe('assertSchemaSupported', () => {
@@ -145,5 +155,46 @@ describe('validateAgainstSchema', () => {
 	it('enforces const', () => {
 		expect(validateAgainstSchema('b', { const: 'a' }).join(' ')).toMatch(/does not match the required const/);
 		expect(validateAgainstSchema('a', { const: 'a' })).toEqual([]);
+	});
+});
+
+describe('prototype-named properties', () => {
+	// `key in value` resolves through Object.prototype, which would make these
+	// properties permanently present (or permanently satisfied).
+	it('does not treat inherited members as present', () => {
+		const schema = { type: 'object', properties: { constructor: { type: 'string' } } };
+		expect(validateAgainstSchema(JSON.parse('{"a":1}'), schema)).toEqual([]);
+	});
+
+	it('still reports a genuinely missing prototype-named property', () => {
+		const errors = validateAgainstSchema(JSON.parse('{}'), {
+			type: 'object', required: ['toString'],
+		});
+		expect(errors.join(' ')).toMatch(/missing required property "toString"/);
+	});
+
+	it('validates a prototype-named property that is genuinely present', () => {
+		const schema = { type: 'object', properties: { valueOf: { type: 'string' } } };
+		expect(validateAgainstSchema(JSON.parse('{"valueOf":"x"}'), schema)).toEqual([]);
+		expect(validateAgainstSchema(JSON.parse('{"valueOf":1}'), schema).join(' '))
+			.toMatch(/expected string/);
+	});
+});
+
+describe('additionalProperties without properties', () => {
+	it('enforces false even when no properties are declared', () => {
+		const errors = validateAgainstSchema({ a: 1 }, { type: 'object', additionalProperties: false });
+		expect(errors.join(' ')).toMatch(/unexpected additional property "a"/);
+	});
+
+	it('validates additional properties against a sub-schema', () => {
+		const schema = {
+			type: 'object',
+			properties: { known: { type: 'number' } },
+			additionalProperties: { type: 'string' },
+		};
+		expect(validateAgainstSchema({ known: 1, extra: 'ok' }, schema)).toEqual([]);
+		expect(validateAgainstSchema({ known: 1, extra: 5 }, schema).join(' '))
+			.toMatch(/root.extra: expected string/);
 	});
 });

@@ -120,14 +120,27 @@ function matchFrom(text: string, start: number): number {
 	return -1;
 }
 
-/** Every balanced {...} / [...] span in the text, outermost first. */
+/**
+ * Every balanced {...} / [...] span in the text, outermost first.
+ *
+ * A failed scan runs to the end of the input, so a pathological reply made
+ * largely of unmatched opening brackets would be quadratic. Failures are
+ * capped: legitimate output needs only a handful.
+ */
+const MAX_FAILED_SCANS = 32;
+
 function balancedCandidates(text: string): string[] {
 	const found: string[] = [];
+	let failures = 0;
+
 	for (let i = 0; i < text.length; i++) {
 		const ch = text[i];
 		if (ch !== '{' && ch !== '[') continue;
 		const end = matchFrom(text, i);
-		if (end === -1) continue;
+		if (end === -1) {
+			if (++failures >= MAX_FAILED_SCANS) break;
+			continue;
+		}
 		found.push(text.slice(i, end + 1));
 		i = end;
 	}
@@ -183,6 +196,16 @@ export function validateJsonOutput(text: string, format: ResponseFormat): JsonVa
 	const extracted = extractJson(text);
 	if (!extracted) {
 		return { ok: false, reason: 'response did not contain a parseable JSON value' };
+	}
+
+	// OpenAI's json_object contract promises an object, not any JSON value.
+	// Returning a bare scalar or array here would break `JSON.parse(...).field`.
+	if (format.mode === 'json_object' && !isPlainObject(extracted.value)) {
+		return {
+			ok: false,
+			reason: 'response_format json_object requires a JSON object, but the response was a ' +
+				(Array.isArray(extracted.value) ? 'array' : typeof extracted.value),
+		};
 	}
 
 	if (format.mode === 'json_schema') {

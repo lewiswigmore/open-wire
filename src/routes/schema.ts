@@ -60,7 +60,16 @@ export function findUnsupportedKeywords(schema: unknown, path = ''): string[] {
 			found.push(...findUnsupportedKeywords(sub, joinPath(path, `properties.${name}`)));
 		}
 	}
-	if (schema.items !== undefined) {
+	if (isPlainObject(schema.additionalProperties)) {
+		found.push(...findUnsupportedKeywords(
+			schema.additionalProperties,
+			joinPath(path, 'additionalProperties'),
+		));
+	}
+	if (Array.isArray(schema.items)) {
+		// Tuple validation is not implemented, so it must not be accepted.
+		found.push(joinPath(path, 'items (tuple form)'));
+	} else if (schema.items !== undefined) {
 		found.push(...findUnsupportedKeywords(schema.items, joinPath(path, 'items')));
 	}
 
@@ -131,7 +140,7 @@ export function validateAgainstSchema(value: unknown, schema: unknown, path = 'r
 		if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) {
 			errors.push(`${path}: array longer than maxItems ${schema.maxItems}`);
 		}
-		if (schema.items !== undefined) {
+		if (schema.items !== undefined && !Array.isArray(schema.items)) {
 			value.forEach((item, i) => {
 				errors.push(...validateAgainstSchema(item, schema.items, `${path}[${i}]`));
 			});
@@ -141,23 +150,32 @@ export function validateAgainstSchema(value: unknown, schema: unknown, path = 'r
 	if (isPlainObject(value)) {
 		if (Array.isArray(schema.required)) {
 			for (const key of schema.required) {
-				if (typeof key === 'string' && !(key in value)) {
+				if (typeof key === 'string' && !hasOwn(value, key)) {
 					errors.push(`${path}: missing required property "${key}"`);
 				}
 			}
 		}
-		if (isPlainObject(schema.properties)) {
-			for (const [key, sub] of Object.entries(schema.properties)) {
-				if (key in value) {
+
+		const properties = isPlainObject(schema.properties) ? schema.properties : undefined;
+		if (properties) {
+			for (const [key, sub] of Object.entries(properties)) {
+				if (hasOwn(value, key)) {
 					errors.push(...validateAgainstSchema(value[key], sub, `${path}.${key}`));
 				}
 			}
-			if (schema.additionalProperties === false) {
-				const allowed = new Set(Object.keys(schema.properties));
-				for (const key of Object.keys(value)) {
-					if (!allowed.has(key)) {
-						errors.push(`${path}: unexpected additional property "${key}"`);
-					}
+		}
+
+		// additionalProperties applies whether or not `properties` is present.
+		if (schema.additionalProperties === false || isPlainObject(schema.additionalProperties)) {
+			const declared = new Set(properties ? Object.keys(properties) : []);
+			for (const key of Object.keys(value)) {
+				if (declared.has(key)) continue;
+				if (schema.additionalProperties === false) {
+					errors.push(`${path}: unexpected additional property "${key}"`);
+				} else {
+					errors.push(...validateAgainstSchema(
+						value[key], schema.additionalProperties, `${path}.${key}`,
+					));
 				}
 			}
 		}
@@ -167,6 +185,15 @@ export function validateAgainstSchema(value: unknown, schema: unknown, path = 'r
 }
 
 // ── helpers ───────────────────────────────────────────────
+
+/**
+ * Own-property check. Plain `in` walks the prototype chain, so a schema
+ * property named `constructor` or `toString` would appear to exist on every
+ * object and could never be satisfied.
+ */
+function hasOwn(value: Record<string, any>, key: string): boolean {
+	return Object.prototype.hasOwnProperty.call(value, key);
+}
 
 function joinPath(base: string, segment: string): string {
 	return base ? `${base}.${segment}` : segment;
@@ -204,7 +231,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 	if (isPlainObject(a) && isPlainObject(b)) {
 		const ka = Object.keys(a);
 		const kb = Object.keys(b);
-		return ka.length === kb.length && ka.every(k => k in b && deepEqual(a[k], b[k]));
+		return ka.length === kb.length && ka.every(k => hasOwn(b, k) && deepEqual(a[k], b[k]));
 	}
 	return false;
 }

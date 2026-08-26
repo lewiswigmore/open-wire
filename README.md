@@ -124,11 +124,16 @@ curl http://localhost:3030/v1/chat/completions \
   }'
 ```
 
+`json_object` guarantees a JSON **object**. A bare scalar or array is treated as a failure
+and sent back through the repair retry, so `JSON.parse(content).field` is always safe.
+
 **Supported schema keywords.** `type`, `enum`, `const`, `required`, `properties`,
-`additionalProperties`, `items`, `minimum`, `maximum`, `minLength`, `maxLength`,
-`minItems`, `maxItems`. Annotations such as `title` and `description` are ignored. Anything
-else (`$ref`, `allOf`, `anyOf`, `oneOf`, `patternProperties`) returns a `400` rather than
-being accepted and left unenforced.
+`additionalProperties` (boolean or sub-schema), `items` (single schema), `minimum`,
+`maximum`, `minLength`, `maxLength`, `minItems`, `maxItems`. Annotations such as `title`
+and `description` are ignored.
+
+Anything else returns a `400` rather than being accepted and left unenforced — including
+`$ref`, `allOf`, `anyOf`, `oneOf`, `patternProperties`, and the tuple form of `items`.
 
 **Streaming.** Validity cannot be judged mid-stream, so a JSON-mode request with
 `stream: true` buffers the reply, enforces the contract, then emits it as a single content
