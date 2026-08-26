@@ -1,29 +1,29 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+## Supported versions
 
-Security fixes are applied to the latest release on `main`.
+Fixes land on `main` and ship in the next Marketplace release. Only the latest published version is supported.
 
 | Version | Supported |
 | ------- | --------- |
-| latest  | ✅ |
-| older   | ❌ |
+| Latest Marketplace release | Yes |
+| Anything older | No |
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-Please do **not** open public issues for security reports.
+Do **not** open a public issue for a security report.
 
-Report vulnerabilities privately via GitHub Security Advisories:
+Report vulnerabilities privately through GitHub Security Advisories:
 
 1. Open the repository's **Security** tab.
 2. Select **Report a vulnerability**.
 3. Provide reproduction details, impact, and any mitigation notes.
 
-If private reporting is unavailable, contact the maintainer directly and include:
+Include:
 
-- Affected version/commit
+- Affected version or commit
 - Steps to reproduce
-- Expected vs actual behavior
+- Expected vs actual behaviour
 - Potential impact
 
-We will acknowledge receipt, investigate, and coordinate disclosure once a fix is available.
+Reports are acknowledged on the advisory thread. Disclosure is coordinated there once a fix is ready.

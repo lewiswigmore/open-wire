@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report something in OpenWire that does not work
 title: ''
 labels: bug
 assignees: ''
@@ -8,25 +8,25 @@ assignees: ''
 ---
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+What happened, and which part of OpenWire was involved (a VS Code command, a setting, or an API request)?
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '...'
-3. Scroll down to '...'
-4. See error
+**Steps to reproduce**
+1. Start the server (or run the OpenWire command) '...'
+2. Send this request or use this client '...'
+3. Using model '...'
+4. Paste the error message or response body
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**Expected behaviour**
+What response, command result, or server behaviour did you expect?
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**Screenshots and logs**
+Add screenshots, or output from the OpenWire output channel with `openWire.server.enableLogging` turned on.
 
-**Desktop (please complete the following information):**
+**Environment**
  - OS: [e.g. macOS]
- - VS Code Version: [e.g. 1.95.0]
- - Extension Version: [e.g. 0.1.0]
+ - VS Code version: [e.g. 1.95.0]
+ - OpenWire version: [e.g. 0.3.0]
+ - Client: [e.g. curl, OpenAI SDK, OpenClaw]
 
 **Additional context**
-Add any other context about the problem here.
+Any relevant `openWire.server.*` settings, and the request payload if you can share it.

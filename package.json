@@ -85,7 +85,7 @@
 				"openWire.server.autoStart": {
 					"type": "boolean",
 					"default": true,
-					"description": "Automatically start the relay server when VS Code launches"
+					"description": "Start the relay server when VS Code launches"
 				},
 				"openWire.server.host": {
 					"type": "string",
@@ -122,7 +122,7 @@
 				"openWire.server.defaultSystemPrompt": {
 					"type": "string",
 					"default": "",
-					"description": "System prompt prepended to all requests if no system message is present"
+					"description": "Prepend this system prompt when a request has no system message"
 				},
 				"openWire.server.maxConcurrentRequests": {
 					"type": "number",

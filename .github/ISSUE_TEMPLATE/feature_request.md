@@ -1,20 +1,20 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
+about: Suggest a change to OpenWire
 title: ''
 labels: enhancement
 assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+**Problem**
+Which OpenWire workflow, API call, or setting is getting in your way?
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+**Proposed change**
+The behaviour, command, setting, or API response you want instead.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**Alternatives considered**
+Any workaround, client-side change, or existing OpenAI-compatible behaviour you tried first.
 
 **Additional context**
-Add any other context or screenshots about the feature request here.
+Examples, client details, links to the relevant OpenAI or VS Code Language Model API docs, or screenshots.
