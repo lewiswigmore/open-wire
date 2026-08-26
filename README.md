@@ -190,6 +190,56 @@ src/
     vscode-lm.d.ts      type augmentations
 ```
 
+## Development
+
+Clone the repo and install dependencies:
+
+```bash
+npm install
+```
+
+Start esbuild in watch mode, then press F5 in VS Code to launch the Extension
+Development Host with OpenWire loaded:
+
+```bash
+npm run watch
+```
+
+`.vscode/launch.json` has two configurations. "Run Extension" builds once and
+launches. "Run Extension (Watch)" starts the watcher for you. Reload the
+Development Host window to pick up a rebuild.
+
+| Command | What it does |
+| --- | --- |
+| `npm run lint` | Type checks with `tsc --noEmit` |
+| `npm run test` | Runs the Vitest suite |
+| `npm run build` | Bundles `src/` into `dist/extension.js` |
+| `npm run package` | Builds a production bundle and writes a local `.vsix` |
+
+`npm run package` fails when `@types/vscode` is newer than `engines.vscode`,
+so raising the types version means raising the engine floor too. The reverse
+is not checked. Raising `engines.vscode` on its own packages and publishes
+without complaint, which leaves the types older than the VS Code version the
+extension now claims to support, so bump `@types/vscode` to match by hand.
+
+## Releasing
+
+CI runs lint, build and test on Node 20 and 22, and packages the extension once
+on Node 20. The `.vsix` from that run is uploaded as a build artifact, so you
+can install a branch build before it ships. It runs on every pull request
+whatever base branch it targets, so stacked branches are covered too.
+
+To cut a release:
+
+1. Bump `version` in `package.json` and merge that to `main`.
+2. Tag the merge commit as `vX.Y.Z`, matching the version you just set.
+3. Push the tag.
+
+The Release workflow checks the tag against the version in `package.json` and
+stops if they disagree. It then runs lint, build and test, packages a single
+`.vsix`, publishes that exact file to the VS Code Marketplace, and attaches it
+to a GitHub release. Publishing needs a `VSCE_PAT` repository secret.
+
 ## License
 
 [MIT](LICENSE)
