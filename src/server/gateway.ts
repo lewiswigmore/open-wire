@@ -4,7 +4,11 @@ import * as vscode from 'vscode';
 import { loadConfig, type ServerConfig } from './config';
 import { isOriginAllowed } from './security';
 import { listModels } from '../models';
-import { processChatCompletion, processStreamingChatCompletion } from '../routes/chat';
+import { processChatCompletion, processStreamingChatCompletion, supportsImageInput, writeSseError } from '../routes/chat';
+import { SUPPORTED_IMAGE_MIME_TYPES } from '../routes/content';
+import { legacyStreamResponse, toLegacyCompletion } from '../routes/legacy';
+import { HONOURED_PARAMS, UNSUPPORTED_PARAMS } from '../routes/params';
+import { SUPPORTED_SCHEMA_KEYWORDS } from '../routes/schema';
 
 export class Gateway implements vscode.Disposable {
 	private server: Server | undefined;
@@ -127,7 +131,13 @@ export class Gateway implements vscode.Disposable {
 		this.stats.totalRequests++;
 
 		const timeout = setTimeout(() => {
-			if (!res.writableEnded) {
+			if (res.writableEnded) return;
+			// Once an SSE stream is open a JSON body would corrupt it, so the
+			// timeout has to be reported as a stream event instead.
+			if (res.headersSent) {
+				writeSseError(res, 'Request timeout', 504);
+				res.end();
+			} else {
 				this.sendError(res, 504, 'Request timeout');
 			}
 		}, this.config.requestTimeoutSeconds * 1000);
@@ -137,6 +147,9 @@ export class Gateway implements vscode.Disposable {
 		} catch (err: any) {
 			if (!res.headersSent) {
 				this.sendError(res, err.status || 500, err.message || 'Internal server error');
+			} else if (!res.writableEnded) {
+				writeSseError(res, err.message || 'Internal server error', err.status);
+				res.end();
 			}
 		} finally {
 			clearTimeout(timeout);
@@ -173,13 +186,15 @@ export class Gateway implements vscode.Disposable {
 			return;
 		}
 
+		// Capabilities: what this build actually honours
+		if (method === 'GET' && path === '/v1/capabilities') {
+			this.sendJson(res, 200, this.buildCapabilities());
+			return;
+		}
+
 		// Chat completions
 		if (method === 'POST' && path === '/v1/chat/completions') {
 			const body = await this.readBody(req);
-			// Normalise max_completion_tokens
-			if (body?.max_completion_tokens && !body?.max_tokens) {
-				body.max_tokens = body.max_completion_tokens;
-			}
 			if (body?.stream === true) {
 				await processStreamingChatCompletion(body, this.config, req, res);
 			} else {
@@ -189,24 +204,66 @@ export class Gateway implements vscode.Disposable {
 			return;
 		}
 
-		// Legacy completions endpoint, mapped onto chat
+		// Legacy completions endpoint, mapped onto chat then back to text_completion
 		if (method === 'POST' && path === '/v1/completions') {
 			const body = await this.readBody(req);
-			const prompt = body?.prompt || '';
+			const prompt = body?.prompt ?? '';
 			const chatPayload = {
 				...body,
 				messages: [{ role: 'user', content: Array.isArray(prompt) ? prompt.join('\n') : prompt }],
 			};
+			delete chatPayload.prompt;
+
 			if (body?.stream === true) {
-				await processStreamingChatCompletion(chatPayload, this.config, req, res);
+				await processStreamingChatCompletion(
+					chatPayload,
+					this.config,
+					req,
+					legacyStreamResponse(res),
+				);
 			} else {
 				const result = await processChatCompletion(chatPayload, this.config);
-				this.sendJson(res, 200, result);
+				this.sendJson(res, 200, toLegacyCompletion(result));
 			}
 			return;
 		}
 
 		this.sendError(res, 404, `Unknown endpoint: ${method} ${path}`);
+	}
+
+	/** Report what this build honours, so callers never have to probe empirically. */
+	private buildCapabilities(): object {
+		const version = vscode.extensions.getExtension('lewiswigmore.open-wire')
+			?.packageJSON?.version ?? 'unknown';
+
+		return {
+			object: 'openwire.capabilities',
+			version,
+			honoured_params: HONOURED_PARAMS,
+			unsupported_params: UNSUPPORTED_PARAMS,
+			strict_params: this.config.strictParams,
+			response_format: {
+				supported: ['text', 'json_object', 'json_schema'],
+				enforcement: 'server-side: instruction, extraction, validation, bounded repair retry',
+				max_repair_retries: this.config.jsonModeMaxRetries,
+				schema_keywords: SUPPORTED_SCHEMA_KEYWORDS,
+				streaming: 'buffered (a JSON-mode stream emits one content delta)',
+				on_failure: 'HTTP 502',
+			},
+			image_input: {
+				supported: supportsImageInput(),
+				requires: 'VS Code 1.125 or newer',
+				accepted_sources: ['base64 data: URI'],
+				rejected_sources: ['remote http(s) URLs'],
+				mime_types: SUPPORTED_IMAGE_MIME_TYPES,
+			},
+			streaming: { sse: true, include_usage: true },
+			limits: {
+				max_request_body_mb: this.config.maxRequestBodyMb,
+				max_concurrent_requests: this.config.maxConcurrentRequests,
+				rate_limit_per_minute: this.config.rateLimitPerMinute,
+			},
+		};
 	}
 
 	// ── Utilities ─────────────────────────────────────────────
@@ -223,7 +280,7 @@ export class Gateway implements vscode.Disposable {
 	private async readBody(req: IncomingMessage): Promise<any> {
 		const chunks: Buffer[] = [];
 		let size = 0;
-		const maxSize = 1024 * 1024; // 1MB
+		const maxSize = this.config.maxRequestBodyMb * 1024 * 1024;
 
 		await new Promise<void>((resolve, reject) => {
 			req.on('data', (chunk: Buffer) => {
