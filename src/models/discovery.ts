@@ -29,7 +29,7 @@ export async function listModels(): Promise<ModelInfo[]> {
 	const models = await discoverModels();
 	const now = Math.floor(Date.now() / 1000);
 
-	// Deduplicate by model ID — prefer 'copilot' vendor over 'copilotcli'
+	// Deduplicate by model ID, preferring the 'copilot' vendor over 'copilotcli'
 	const seen = new Map<string, ModelInfo>();
 	for (const m of models) {
 		const id = m.id;

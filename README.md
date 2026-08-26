@@ -26,46 +26,46 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 
 ## Features
 
-- **OpenAI-compatible** — `/v1/chat/completions`, `/v1/models` with streaming (SSE)
-- **Auto-discovery** — finds every language model registered in VS Code
-- **Tool forwarding** — pass OpenAI-format tools, get `tool_calls` back
-- **Multi-provider content handling** — normalises Anthropic-style content arrays, OpenAI strings, and Gemini parts into a consistent format
-- **XML tool call fallback** — when native tool forwarding isn't available, parses Claude's XML `<function_calls>` output into proper `tool_calls` objects
-- **Rate limiting** — configurable per-minute request cap
-- **API key auth** — Bearer token authentication enabled by default
-- **Tight CORS defaults** — browser requests are limited to local loopback origins by default
-- **Zero dependencies** — pure Node.js HTTP, no Express, no frameworks
+- **OpenAI-compatible.** `/v1/chat/completions` and `/v1/models`, with SSE streaming.
+- **Auto-discovery.** Every language model registered in VS Code shows up. No configuration.
+- **Tool forwarding.** Send OpenAI-format tools, get `tool_calls` back.
+- **Content normalisation.** String content and `type: "text"` parts both flatten to plain text before they reach the VS Code LM API.
+- **XML tool call fallback.** Non-streaming responses containing a `<function_calls>` block are converted to `tool_calls`.
+- **Rate limiting.** Configurable per-minute request cap.
+- **API key auth.** Bearer token authentication enabled by default.
+- **Tight CORS defaults.** Browser requests are limited to loopback origins.
+- **Zero dependencies.** Node's built-in HTTP server, no Express.
 
 ## Models
 
-Any model available through VS Code's Language Model API is automatically exposed — no configuration needed. This typically includes:
+Any model registered with VS Code's Language Model API is exposed automatically. In practice that means:
 
-- **Claude** — Opus, Sonnet, Haiku
-- **GPT** — Codex, GPT-4.1, o4-mini
-- **Gemini** — Gemini Pro, Gemini Flash
-- **Ollama** — any locally running Ollama models (Llama, Qwen, DeepSeek, Mistral, etc.)
-- Any other models registered via the VS Code Language Model API
+- **Claude.** Opus, Sonnet, Haiku
+- **GPT.** Codex, GPT-4.1, o4-mini
+- **Gemini.** Gemini Pro, Gemini Flash
+- **Ollama.** Only when a separate extension registers your local models with VS Code. OpenWire never talks to Ollama directly.
+- Anything else registered with the VS Code Language Model API
 
-Run `GET /v1/models` to see what's available in your setup.
+Call `GET /v1/models` to see what your setup actually exposes.
 
-## Provider Compatibility
+## Provider compatibility
 
-OpenWire normalises differences between providers so callers always get a consistent OpenAI-format response:
+OpenWire normalises differences between providers so callers get a consistent OpenAI-format response:
 
 | Provider | Content format | Tool calling | Status |
 |----------|---------------|-------------|--------|
-| **Claude** (Anthropic) | Array of `{"type":"text","text":"..."}` parts | Native via VS Code API; XML `<function_calls>` fallback parsed automatically | ✅ Full support |
-| **GPT** (OpenAI) | Plain string | Native `tool_calls` via VS Code API | ✅ Full support |
-| **Gemini** (Google) | Plain string or parts array | Native via VS Code API | ✅ Full support |
-| **Ollama** (local) | Plain string | Depends on model capability | ✅ Supported |
+| **Claude** (Anthropic) | Array of `{"type":"text","text":"..."}` parts | Native via VS Code API, plus an XML `<function_calls>` fallback on non-streaming responses | Supported |
+| **GPT** (OpenAI) | Plain string | Native `tool_calls` via VS Code API | Supported |
+| **Gemini** (Google) | Plain string, or text parts tagged `type: "text"` | Native via VS Code API | Supported |
+| **Ollama** (local) | Plain string | Depends on the model | Only via a VS Code LM provider extension |
 
-**Content normalisation** — Incoming messages with `content` as an array of content parts (Anthropic format), a plain string (OpenAI/Gemini), or null are all normalised to plain strings before forwarding to the VS Code LM API.
+**Content normalisation.** Message `content` can be a plain string, `null`, or an array of parts. All three flatten to a plain string before OpenWire calls the VS Code LM API. Parts survive only when they are strings or carry `type: "text"`, so image parts and other non-text parts are dropped.
 
-**Tool call fallback** — When the VS Code LM API can't forward tools natively (e.g. older VS Code versions), Claude may output tool calls as XML. OpenWire detects and converts these to standard `tool_calls` objects in the response, so callers never see raw XML.
+**Tool call fallback.** A model can answer with a raw XML `<function_calls>` block instead of a native tool call. On non-streaming requests OpenWire parses that block into standard `tool_calls` and strips it from the message content. Streaming requests rely on native tool-call parts, so XML can still reach the client as ordinary text.
 
-## Quick Start
+## Quick start
 
-Install from the VS Code Marketplace (or load the `.vsix`). The server starts automatically on `http://127.0.0.1:3030`.
+Install from the VS Code Marketplace, or load the `.vsix` yourself. The server starts on `http://127.0.0.1:3030` as soon as VS Code loads the extension.
 
 ```bash
 export OPENWIRE_API_KEY="change-me-openwire-key"
@@ -93,6 +93,8 @@ curl http://localhost:3030/v1/chat/completions \
     "stream": true
   }'
 ```
+
+Swap `claude-sonnet-4.6` for any id from `GET /v1/models`. OpenWire matches on model id or family and has no built-in aliases, so an unrecognised name returns a 404 listing what is available.
 
 ## Endpoints
 
@@ -131,7 +133,7 @@ All settings live under `openWire.server.*` in VS Code:
 
 ## Using with OpenClaw
 
-OpenWire can serve as a model provider for [OpenClaw](https://openclaw.ai) agents. Register OpenWire as a custom provider called `copilot-proxy` in your `~/.openclaw/openclaw.json`:
+OpenWire works as a model provider for [OpenClaw](https://openclaw.ai) agents. Register OpenWire as a custom provider called `copilot-proxy` in your `~/.openclaw/openclaw.json`:
 
 ```jsonc
 {
@@ -168,27 +170,25 @@ OpenWire can serve as a model provider for [OpenClaw](https://openclaw.ai) agent
 }
 ```
 
-OpenWire now requires a Bearer token by default. Set a custom `openWire.server.apiKey` in VS Code and use the same value in OpenClaw.
+OpenWire requires a Bearer token by default. Set a custom `openWire.server.apiKey` in VS Code and use the same value in OpenClaw.
 
 ## Architecture
 
 ```
 src/
-  extension.ts          — activation, commands, status bar
+  extension.ts          activation, commands, status bar
   models/
-    discovery.ts        — model discovery, caching, dedup
+    discovery.ts        model discovery, caching, dedup
   routes/
-    chat.ts             — chat completions + tool forwarding
+    chat.ts             chat completions + tool forwarding
   server/
-    config.ts           — settings loader
-    gateway.ts          — HTTP server, routing, middleware
+    config.ts           settings loader
+    gateway.ts          HTTP server, routing, middleware
   ui/
-    sidebar.ts          — webview sidebar panel
+    sidebar.ts          webview sidebar panel
   types/
-    vscode-lm.d.ts      — type augmentations
+    vscode-lm.d.ts      type augmentations
 ```
-
-Lightweight · zero runtime dependencies
 
 ## License
 

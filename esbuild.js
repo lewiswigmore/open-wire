@@ -40,10 +40,10 @@ async function main() {
 		// Performance optimizations
 		treeShaking: true,
 		metafile: true,
-		// Remove console.log in production for smaller bundle
+		// Drop all console calls and debugger statements in production
 		drop: production ? ['console', 'debugger'] : [],
 		plugins: [
-			/* add to the end of plugins array */
+			// Keep the problem matcher last so it reports after other plugins run
 			esbuildProblemMatcherPlugin,
 		],
 	});

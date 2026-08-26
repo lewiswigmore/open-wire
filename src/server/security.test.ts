@@ -8,7 +8,7 @@ import {
 } from './security';
 
 describe('normalizeApiKey', () => {
-	it('falls back to secure default when value is empty', () => {
+	it('falls back to the placeholder default when value is empty', () => {
 		expect(normalizeApiKey('')).toBe(DEFAULT_API_KEY);
 		expect(normalizeApiKey('   ')).toBe(DEFAULT_API_KEY);
 		expect(normalizeApiKey(undefined)).toBe(DEFAULT_API_KEY);

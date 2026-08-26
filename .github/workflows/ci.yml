@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - name: Ensure validation matrix passed
+      - name: Check validation matrix
         run: |
           if [ "${{ needs.build.result }}" != "success" ]; then
             echo "Validation matrix failed"
