@@ -11,7 +11,7 @@ export interface ChatMessage {
 	tool_call_id?: string;
 }
 
-/** Extract plain text from content that may be a string, array of content parts, or other format */
+/** Extract text from content that is a string, an array of text parts, or something else */
 function normalizeContent(content: unknown): string {
 	if (typeof content === 'string') return content;
 	if (Array.isArray(content)) {
@@ -90,8 +90,8 @@ function injectSystemPrompt(msgs: ChatMessage[], prompt: string): ChatMessage[] 
 }
 
 /**
- * Parse XML-style function calls from model text output.
- * Claude falls back to this format when native tool calling isn't available.
+ * Parse XML-style function calls out of model text output.
+ * Some models emit this shape instead of a native tool call part.
  */
 function parseXmlToolCalls(text: string): { cleanedText: string; toolCalls: any[] } {
 	const toolCalls: any[] = [];
@@ -274,8 +274,9 @@ export async function processStreamingChatCompletion(
 		const needsToolParsing = !toolsForwarded && payload?.tools?.length > 0;
 
 		if (needsToolParsing) {
-			// Buffer mode: tools were requested but couldn't be forwarded natively.
-			// Collect the full response and parse XML-format function calls from text.
+			// Buffer the whole response, then pull XML function-call blocks out of the text.
+			// Unreachable for well-formed requests: options.tools is set for any non-empty
+			// tools array, so needsToolParsing is always false. See issue #34.
 			let content = '';
 			for await (const part of response.stream) {
 				if (cts.token.isCancellationRequested) break;
@@ -342,7 +343,7 @@ export async function processStreamingChatCompletion(
 				res.write('data: [DONE]\n\n');
 			}
 		} else {
-			// Normal streaming mode with native tool calling support
+			// Stream text and native tool-call parts as they arrive
 			let hasToolCalls = false;
 			let toolCallIndex = 0;
 			let isFirstDelta = true;

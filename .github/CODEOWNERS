@@ -8,7 +8,7 @@
 /.github/PULL_REQUEST_TEMPLATE.md @lewiswigmore
 /SECURITY.md @lewiswigmore
 
-# Runtime and API surface
+# Runtime and API routes
 /src/server/* @lewiswigmore
 /src/routes/* @lewiswigmore
 /package.json @lewiswigmore

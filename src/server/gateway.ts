@@ -189,7 +189,7 @@ export class Gateway implements vscode.Disposable {
 			return;
 		}
 
-		// Completions (legacy — map to chat)
+		// Legacy completions endpoint, mapped onto chat
 		if (method === 'POST' && path === '/v1/completions') {
 			const body = await this.readBody(req);
 			const prompt = body?.prompt || '';
@@ -272,10 +272,10 @@ export class Gateway implements vscode.Disposable {
 	private updateStatus(running: boolean): void {
 		if (running) {
 			this.statusItem.text = '$(broadcast) OpenWire';
-			this.statusItem.tooltip = `OpenWire — http://${this.config.host}:${this.config.port}`;
+			this.statusItem.tooltip = `OpenWire running at http://${this.config.host}:${this.config.port}`;
 		} else {
 			this.statusItem.text = '$(circle-slash) OpenWire';
-			this.statusItem.tooltip = 'OpenWire — Stopped';
+			this.statusItem.tooltip = 'OpenWire stopped';
 		}
 		this.statusItem.show();
 	}

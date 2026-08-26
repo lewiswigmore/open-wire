@@ -384,7 +384,7 @@ function render(state) {
 	$('model-count').textContent = (models && models.length > 0) ? '(' + models.length + ')' : '';
 	modelList.innerHTML = '';
 	if (running && models && models.length > 0) {
-		// Group models by vendor prefix (claude, gpt, gemini, etc.)
+		// Group models by the first segment of the model id (claude, gpt, gemini, ...)
 		var groups = {};
 		models.forEach(function(m) {
 			var prefix = m.id.split('-')[0] || 'other';

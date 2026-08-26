@@ -43,7 +43,7 @@ describe('normalizeContent', () => {
 		expect(normalizeContent('hello')).toBe('hello');
 	});
 
-	it('extracts text from Anthropic content array', () => {
+	it('extracts text from a content part array', () => {
 		const input = [{ type: 'text', text: 'Hello ' }, { type: 'text', text: 'world' }];
 		expect(normalizeContent(input)).toBe('Hello world');
 	});
