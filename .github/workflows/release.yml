@@ -23,22 +23,37 @@ jobs:
         with:
           node-version: 20.x
           cache: npm
+      - name: Check the tag matches the package version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the package.json version $package_version."
+            echo "Either bump package.json to $tag_version, or re-tag as v$package_version."
+            exit 1
+          fi
       - run: npm ci
       - run: npm run lint
       - run: npm run build
       - run: npm run test
-      - run: npm run package
+      - name: Build the VSIX
+        id: package
+        run: |
+          vsix="open-wire-${GITHUB_REF_NAME#v}.vsix"
+          npm run package -- --out "$vsix"
+          echo "vsix=$vsix" >> "$GITHUB_OUTPUT"
       - name: Publish to VS Code Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          VSIX_PATH: ${{ steps.package.outputs.vsix }}
         run: |
           if [ -z "$VSCE_PAT" ]; then
             echo "VSCE_PAT secret is required to publish."
             exit 1
           fi
-          npx vsce publish -p "$VSCE_PAT"
+          npx vsce publish --packagePath "$VSIX_PATH" --skip-duplicate
       - name: Create GitHub release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
-          files: '*.vsix'
+          files: ${{ steps.package.outputs.vsix }}
           generate_release_notes: true
