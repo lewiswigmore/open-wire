@@ -519,6 +519,31 @@ describe('streaming', () => {
 		expect(sseFrames(body).some(f => f.usage)).toBe(false);
 	});
 
+	// stream: true must not become a way to lose the capability report.
+	it('reports unsupported params in a metadata frame', async () => {
+		queueText('hello');
+		const body = await (await post('/v1/chat/completions', {
+			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			stream: true, logprobs: true, wibble: 1,
+		})).text();
+
+		const frames = sseFrames(body);
+		const meta = frames.find(f => f.x_openwire);
+		expect(meta.x_openwire.unsupported_params).toEqual(['logprobs']);
+		expect(meta.x_openwire.unknown_params).toEqual(['wibble']);
+		expect(meta.choices).toEqual([]);
+		// It must arrive before any content, so a client sees it up front.
+		expect(frames.indexOf(meta)).toBe(0);
+	});
+
+	it('omits the metadata frame when everything was honoured', async () => {
+		queueText('hello');
+		const body = await (await post('/v1/chat/completions', {
+			model: 'test-model', messages: [{ role: 'user', content: 'x' }], stream: true,
+		})).text();
+		expect(sseFrames(body).some(f => f.x_openwire)).toBe(false);
+	});
+
 	it('buffers JSON mode into a single valid delta', async () => {
 		queueText('Sure!\n```json\n{"a":1}\n```');
 		const body = await (await post('/v1/chat/completions', {
@@ -595,6 +620,15 @@ describe('legacy completions', () => {
 		queueText('ok');
 		await post('/v1/completions', { model: 'test-model', prompt: ['a', 'b'] });
 		expect(String(recordedRequests()[0].messages[0].content)).toContain('a\nb');
+	});
+
+	// The legacy endpoint consumes `prompt`, so it must not be reported there.
+	it('does not report prompt as unknown on the legacy endpoint', async () => {
+		queueText('ok');
+		const body = await (await post('/v1/completions', {
+			model: 'test-model', prompt: 'hello',
+		})).json() as any;
+		expect(body.x_openwire).toBeUndefined();
 	});
 
 	it('streams in the legacy shape', async () => {

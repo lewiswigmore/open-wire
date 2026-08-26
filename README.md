@@ -76,12 +76,12 @@ tool-call parts, so an XML block can still reach the client as ordinary text.
 
 ## Request parameters
 
-OpenWire never accepts a parameter it does not honour. Every field lands in one of three
-buckets, and `GET /v1/capabilities` reports the split for the running build.
+OpenWire never silently ignores a parameter. Every field lands in one of three buckets, and
+`GET /v1/capabilities` reports the split for the running build.
 
 | Bucket | Behaviour | Fields |
 |--------|-----------|--------|
-| **Honoured** | Forwarded to the model or handled by OpenWire | `model`, `messages`, `prompt`, `stream`, `stream_options`, `tools`, `tool_choice`, `response_format`, `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `seed`, `presence_penalty`, `frequency_penalty` |
+| **Honoured** | Forwarded to the model or handled by OpenWire | `model`, `messages`, `stream`, `stream_options`, `tools`, `tool_choice`, `response_format`, `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `seed`, `presence_penalty`, `frequency_penalty` |
 | **Rejected** | `400`, because honouring them partially would be misleading | `n` greater than 1, out-of-range sampling values, unsupported `response_format.type`, unsupported JSON Schema keywords, remote image URLs |
 | **Reported** | Accepted, but listed under `x_openwire.unsupported_params` in the response | `logprobs`, `top_logprobs`, `logit_bias`, `user`, `parallel_tool_calls`, `store`, `metadata`, `service_tier`, and other OpenAI fields with no VS Code equivalent |
 
@@ -90,6 +90,12 @@ That is the right setting for agents that need a hard guarantee about what was a
 
 Invalid values are rejected rather than clamped. `temperature: 9` returns a `400`; it does
 not quietly become `2`.
+
+`prompt` is honoured only by `/v1/completions`. Sending it to `/v1/chat/completions` has no
+effect, so it is reported there like any other unknown field.
+
+Streaming requests carry the same report in a metadata-only frame (`choices: []`) emitted
+before the first content delta, so `stream: true` is not a way to lose it.
 
 ## JSON mode
 

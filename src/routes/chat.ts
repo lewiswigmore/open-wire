@@ -409,6 +409,21 @@ export async function processStreamingChatCompletion(
 	const base = { id: requestId, object: 'chat.completion.chunk', created, model: prepared.modelId };
 	let completionText = '';
 
+	// Mirror the non-streaming x_openwire report. Without this, unsupported
+	// params would be silent no-ops again whenever stream: true.
+	const report = prepared.report;
+	if (report.unsupported.length > 0 || report.unknown.length > 0) {
+		sseChunk(res, {
+			...base,
+			choices: [],
+			x_openwire: {
+				unsupported_params: report.unsupported,
+				unknown_params: report.unknown,
+				note: 'These fields were accepted but had no effect. Enable openWire.server.strictParams to reject them instead.',
+			},
+		});
+	}
+
 	try {
 		if (isJsonMode(prepared.format)) {
 			// Validity cannot be judged mid-stream, so JSON mode buffers the turn,

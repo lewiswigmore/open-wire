@@ -22,7 +22,6 @@ const SAMPLING_PARAMS = [
 const STRUCTURAL_PARAMS = new Set([
 	'model',
 	'messages',
-	'prompt',
 	'stream',
 	'stream_options',
 	'tools',

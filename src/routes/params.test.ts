@@ -93,6 +93,13 @@ describe('classifyParams', () => {
 		expect(report).toEqual({ unsupported: [], unknown: [] });
 	});
 
+	// prompt is only meaningful to /v1/completions, which consumes it before
+	// classification. On the chat path it does nothing, so it must be reported.
+	it('reports prompt, which the chat path ignores', () => {
+		expect(classifyParams({ model: 'm', messages: [], prompt: 'hi' }).unknown)
+			.toEqual(['prompt']);
+	});
+
 	it('flags known OpenAI params that cannot be honoured', () => {
 		const report = classifyParams({ logprobs: true, user: 'abc', parallel_tool_calls: false });
 		expect(report.unsupported).toEqual(['logprobs', 'parallel_tool_calls', 'user']);

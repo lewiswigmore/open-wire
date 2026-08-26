@@ -124,7 +124,7 @@ export function normalizeContentParts(content: unknown): ContentPart[] {
 	return [{ kind: 'text', text: String(content) }];
 }
 
-/** Flatten parts to plain text, preserving a placeholder for images. */
+/** Flatten parts to plain text. Non-text parts contribute nothing. */
 export function partsToText(parts: ContentPart[]): string {
 	return parts.map(p => (p.kind === 'text' ? p.text : '')).join('');
 }
