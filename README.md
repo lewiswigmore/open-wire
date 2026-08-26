@@ -114,7 +114,7 @@ curl http://localhost:3030/v1/chat/completions \
   -H "Authorization: Bearer $OPENWIRE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4.6",
+    "model": "<model-id>",
     "messages": [{"role": "user", "content": "Rate this repo out of 10"}],
     "response_format": {
       "type": "json_schema",
@@ -151,7 +151,7 @@ Vision requests use the standard OpenAI content-part shape:
 
 ```jsonc
 {
-  "model": "claude-sonnet-4.6",
+  "model": "<model-id>",
   "messages": [{
     "role": "user",
     "content": [
