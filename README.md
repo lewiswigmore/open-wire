@@ -40,9 +40,9 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 
 Any model registered with VS Code's Language Model API is exposed automatically. In practice that means:
 
-- **Claude.** Whatever Anthropic model family/tier VS Code currently ships (e.g. Opus, Sonnet, Haiku)
-- **GPT.** Whatever OpenAI model family VS Code currently ships (e.g. GPT and reasoning-tier variants)
-- **Gemini.** Whatever Google model family VS Code currently ships (e.g. Pro, Flash)
+- **Claude.** Whatever Anthropic model family/tier is currently registered by an installed extension (e.g. Opus, Sonnet, Haiku)
+- **GPT.** Whatever OpenAI model family is currently registered by an installed extension (e.g. GPT and reasoning-tier variants)
+- **Gemini.** Whatever Google model family is currently registered by an installed extension (e.g. Pro, Flash)
 - **Ollama.** Only when a separate extension registers your local models with VS Code. OpenWire never talks to Ollama directly.
 - Anything else registered with the VS Code Language Model API
 
