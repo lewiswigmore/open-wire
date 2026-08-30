@@ -141,6 +141,8 @@ describe('auth and routing', () => {
 
 		const result = await new Promise<{ status: number; body: string; connection: string | undefined }>(
 			(resolve, reject) => {
+				let receivedResponse = false;
+				let pendingError: NodeJS.Timeout | undefined;
 				const req = httpRequest(`${baseUrl}/v1/chat/completions`, {
 					method: 'POST',
 					headers: {
@@ -149,6 +151,8 @@ describe('auth and routing', () => {
 						'Transfer-Encoding': 'chunked',
 					},
 				}, res => {
+					receivedResponse = true;
+					if (pendingError) clearTimeout(pendingError);
 					let body = '';
 					res.setEncoding('utf8');
 					res.on('data', chunk => { body += chunk; });
@@ -158,7 +162,15 @@ describe('auth and routing', () => {
 						connection: res.headers.connection,
 					}));
 				});
-				req.on('error', reject);
+				// The server intentionally closes an over-limit chunked upload. Node can
+				// emit the write-side EPIPE just before delivering the already-flushed
+				// 413 response, so allow that response event a brief turn to arrive.
+				req.on('error', error => {
+					if (receivedResponse) return;
+					pendingError = setTimeout(() => {
+						if (!receivedResponse) reject(error);
+					}, 100);
+				});
 				req.write('{"model":"test-model","messages":[{"role":"user","content":"');
 				for (let i = 0; i < 17; i++) req.write('x'.repeat(64 * 1024));
 				// Deliberately do not call end(): the server must terminate the upload.
