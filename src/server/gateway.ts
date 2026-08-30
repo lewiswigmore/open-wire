@@ -147,7 +147,10 @@ export class Gateway implements vscode.Disposable {
 		} catch (err: any) {
 			const status = err.status || 500;
 			if (status === 413 && !res.headersSent) {
-				res.setHeader('Connection', 'close');
+				// Unknown-length overflows cannot be drained safely. For a declared
+				// length, leave the response keep-alive until the short drain grace has
+				// ended so ordinary clients can receive the JSON response without EPIPE.
+				if (!err.allowDrainGrace) res.setHeader('Connection', 'close');
 				this.sendError(res, status, err.message || 'Payload too large');
 				await new Promise<void>(resolve => {
 					if (res.writableFinished) resolve();
@@ -156,6 +159,22 @@ export class Gateway implements vscode.Disposable {
 						res.once('close', resolve);
 					}
 				});
+				if (err.allowDrainGrace && !req.complete && !req.destroyed) {
+					await new Promise<void>(resolve => {
+						let settled = false;
+						const done = () => {
+							if (settled) return;
+							settled = true;
+							clearTimeout(timer);
+							resolve();
+						};
+						const timer = setTimeout(done, 250);
+						req.once('end', done);
+						req.once('aborted', done);
+						req.once('close', done);
+						req.resume();
+					});
+				}
 				req.destroy();
 			} else if (!res.headersSent) {
 				this.sendError(res, status, err.message || 'Internal server error');
@@ -297,12 +316,13 @@ export class Gateway implements vscode.Disposable {
 		const maxSize = this.config.maxRequestBodyMb * 1024 * 1024;
 		const contentLength = Number(req.headers['content-length']);
 		const declaredOversized = Number.isFinite(contentLength) && contentLength > maxSize;
+		if (declaredOversized) {
+			req.pause();
+			throw { status: 413, message: 'Payload too large', allowDrainGrace: true };
+		}
 
 		await new Promise<void>((resolve, reject) => {
 			req.on('data', (chunk: Buffer) => {
-				// A known-length body can be drained while the request remains counted
-				// against the concurrency limit, allowing clients to receive the 413.
-				if (declaredOversized) return;
 				if (oversized) return;
 				size += chunk.length;
 				if (size > maxSize) {
@@ -314,10 +334,7 @@ export class Gateway implements vscode.Disposable {
 				}
 				chunks.push(chunk);
 			});
-			req.on('end', () => {
-				if (declaredOversized) reject({ status: 413, message: 'Payload too large' });
-				else resolve();
-			});
+			req.on('end', resolve);
 			req.on('error', reject);
 		});
 

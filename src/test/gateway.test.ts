@@ -106,6 +106,35 @@ describe('auth and routing', () => {
 		expect((await res.json() as any).error.message).toBe('Payload too large');
 	});
 
+	it('rejects a declared oversized body before the upload completes', async () => {
+		await gateway?.stop();
+		await startGateway({ maxRequestBodyMb: 1, maxConcurrentRequests: 1 });
+
+		const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+			let receivedResponse = false;
+			const req = httpRequest(`${baseUrl}/v1/chat/completions`, {
+				method: 'POST',
+				headers: {
+					Authorization: ['Bearer', API_KEY].join(' '),
+					'Content-Type': 'application/json',
+					'Content-Length': 100 * 1024 * 1024,
+				},
+			}, res => {
+				receivedResponse = true;
+				let body = '';
+				res.setEncoding('utf8');
+				res.on('data', chunk => { body += chunk; });
+				res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+			});
+			req.on('error', err => { if (!receivedResponse) reject(err); });
+			req.write('{"incomplete":');
+			// Deliberately do not finish the declared 100 MiB body.
+		});
+
+		expect(result.status).toBe(413);
+		expect(JSON.parse(result.body).error.message).toBe('Payload too large');
+	}, 1_000);
+
 	it('closes a slow chunked upload only after flushing the JSON 413', async () => {
 		await gateway?.stop();
 		await startGateway({ maxRequestBodyMb: 1, maxConcurrentRequests: 1 });

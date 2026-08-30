@@ -161,7 +161,7 @@
 					"default": 10,
 					"minimum": 1,
 					"maximum": 100,
-					"description": "Maximum request body size in megabytes. Image inputs need considerably more than plain text."
+					"description": "Maximum request body size in mebibytes (MiB). Image inputs need considerably more than plain text."
 				}
 			}
 		}
