@@ -145,8 +145,20 @@ export class Gateway implements vscode.Disposable {
 		try {
 			await this.route(req, res);
 		} catch (err: any) {
-			if (!res.headersSent) {
-				this.sendError(res, err.status || 500, err.message || 'Internal server error');
+			const status = err.status || 500;
+			if (status === 413 && !res.headersSent) {
+				res.setHeader('Connection', 'close');
+				this.sendError(res, status, err.message || 'Payload too large');
+				await new Promise<void>(resolve => {
+					if (res.writableFinished) resolve();
+					else {
+						res.once('finish', resolve);
+						res.once('close', resolve);
+					}
+				});
+				req.destroy();
+			} else if (!res.headersSent) {
+				this.sendError(res, status, err.message || 'Internal server error');
 			} else if (!res.writableEnded) {
 				writeSseError(res, err.message || 'Internal server error', err.status);
 				res.end();
@@ -281,15 +293,31 @@ export class Gateway implements vscode.Disposable {
 	private async readBody(req: IncomingMessage): Promise<any> {
 		const chunks: Buffer[] = [];
 		let size = 0;
+		let oversized = false;
 		const maxSize = this.config.maxRequestBodyMb * 1024 * 1024;
+		const contentLength = Number(req.headers['content-length']);
+		const declaredOversized = Number.isFinite(contentLength) && contentLength > maxSize;
 
 		await new Promise<void>((resolve, reject) => {
 			req.on('data', (chunk: Buffer) => {
+				// A known-length body can be drained while the request remains counted
+				// against the concurrency limit, allowing clients to receive the 413.
+				if (declaredOversized) return;
+				if (oversized) return;
 				size += chunk.length;
-				if (size > maxSize) { req.destroy(); reject({ status: 413, message: 'Payload too large' }); return; }
+				if (size > maxSize) {
+					oversized = true;
+					chunks.length = 0;
+					req.pause();
+					reject({ status: 413, message: 'Payload too large' });
+					return;
+				}
 				chunks.push(chunk);
 			});
-			req.on('end', resolve);
+			req.on('end', () => {
+				if (declaredOversized) reject({ status: 413, message: 'Payload too large' });
+				else resolve();
+			});
 			req.on('error', reject);
 		});
 

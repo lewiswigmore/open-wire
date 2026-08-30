@@ -64,10 +64,11 @@ OpenWire normalises differences between providers so callers get a consistent Op
 
 Image input additionally requires VS Code 1.125 or newer, whatever the provider.
 
-**Content normalisation.** Message `content` can be a plain string, `null`, or an array of
-parts. Text parts flatten to a plain string. `image_url` parts are carried through as binary
-image data rather than dropped. Unsupported part types (`input_audio`, `file`) are rejected
-with a 400 instead of being silently discarded.
+**Content normalisation.** Message `content` can be a plain string or an array of parts;
+assistant content may also be `null` when valid `tool_calls` are present. Text parts flatten
+to a plain string. User `image_url` parts are carried through as binary image data rather than
+dropped. Malformed messages, unknown roles, role-incompatible images, and unsupported content
+parts are rejected with a 400 instead of being silently normalised or discarded.
 
 **Tool call fallback.** A model can answer with a raw XML `<function_calls>` block instead of
 a native tool call. On non-streaming requests OpenWire parses that block into standard
@@ -83,7 +84,7 @@ OpenWire never silently ignores a parameter. Every field lands in one of four bu
 |--------|-----------|--------|
 | **Honoured** | Applied and enforced by OpenWire | `model`, `messages`, `stream`, `stream_options`, `tools`, `tool_choice`, `response_format`, `max_completion_tokens`, `n` |
 | **Forwarded** | Passed through `modelOptions`; support and exact semantics depend on the selected VS Code model provider | `temperature`, `top_p`, `max_tokens`, `stop`, `seed`, `presence_penalty`, `frequency_penalty` |
-| **Rejected** | `400`, because honouring them partially would be misleading | `n` greater than 1, out-of-range sampling values, unsupported `response_format.type`, unsupported or malformed JSON Schema constraints, invalid `tools`/`tool_choice` combinations, remote image URLs |
+| **Rejected** | `400`, because honouring them partially would be misleading | malformed messages or `response_format`, `n` greater than 1, out-of-range sampling values, unsupported or malformed JSON Schema constraints, invalid `tools`/`tool_choice` combinations, invalid or remote image inputs |
 | **Reported** | Accepted, but listed under `x_openwire.unsupported_params` in the response | `logprobs`, `top_logprobs`, `logit_bias`, `user`, `parallel_tool_calls`, `store`, `metadata`, `service_tier`, and other OpenAI fields with no VS Code equivalent |
 
 Set `openWire.server.strictParams` to `true` to turn the **Reported** bucket into `400`s as well.
@@ -169,6 +170,8 @@ Vision requests use the standard OpenAI content-part shape:
   fetch a URL on your behalf, because that would let any caller drive requests from your
   machine into your own network.
 - **Supported types.** `image/png`, `image/jpeg`, `image/gif`, `image/webp`.
+- **Validated bytes.** Base64 must be canonical and non-empty, the file signature must match
+  the declared MIME type, and each decoded image is limited to 8 MiB.
 - **Requires VS Code 1.125 or newer**, where `LanguageModelDataPart` reached the stable API.
   On older builds an image request returns `501` rather than silently dropping the image.
   Check `image_input.supported` in `GET /v1/capabilities`.
@@ -215,7 +218,7 @@ Replace `<model-id>` with any id from `GET /v1/models`. OpenWire matches on mode
 | `GET` | `/health` | Health check |
 | `GET` | `/v1/models` | List available models |
 | `GET` | `/v1/models/:id` | Get specific model |
-| `GET` | `/v1/capabilities` | What this build honours, rejects and ignores |
+| `GET` | `/v1/capabilities` | What this build enforces, forwards, rejects, and reports |
 | `POST` | `/v1/chat/completions` | Chat completion (streaming + non-streaming) |
 | `POST` | `/v1/completions` | Legacy completions, returned in `text_completion` shape |
 
@@ -236,8 +239,8 @@ All settings live under `openWire.server.*` in VS Code:
 | `rateLimitPerMinute` | `60` | Rate limit |
 | `requestTimeoutSeconds` | `300` | Request timeout |
 | `strictParams` | `false` | Reject parameters OpenWire cannot honour instead of reporting them |
-| `jsonModeMaxRetries` | `1` | Repair attempts when `response_format` requires JSON |
-| `maxRequestBodyMb` | `10` | Maximum request body size, raised from 1 MB for image input |
+| `jsonModeMaxRetries` | `1` | Repair attempts when `response_format` requires JSON; integer from 0 to 3 |
+| `maxRequestBodyMb` | `10` | Maximum request body size in MiB; integer from 1 to 100 |
 | `enableLogging` | `false` | Verbose logging |
 
 ## Commands

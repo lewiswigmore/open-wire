@@ -23,7 +23,10 @@ export function parseResponseFormat(raw: unknown): ResponseFormat {
 	}
 
 	const type = raw.type;
-	if (type === undefined || type === 'text') return { mode: 'text' };
+	if (type === undefined) {
+		throw badRequest('response_format.type is required when response_format is supplied');
+	}
+	if (type === 'text') return { mode: 'text' };
 
 	if (type === 'json_object') return { mode: 'json_object' };
 

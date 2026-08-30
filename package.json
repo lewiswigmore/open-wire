@@ -150,13 +150,17 @@
 					"description": "Reject requests containing parameters OpenWire cannot honour, instead of reporting them in the response"
 				},
 				"openWire.server.jsonModeMaxRetries": {
-					"type": "number",
+					"type": "integer",
 					"default": 1,
+					"minimum": 0,
+					"maximum": 3,
 					"description": "How many repair attempts to make when response_format requires JSON and the model returns something invalid"
 				},
 				"openWire.server.maxRequestBodyMb": {
-					"type": "number",
+					"type": "integer",
 					"default": 10,
+					"minimum": 1,
+					"maximum": 100,
 					"description": "Maximum request body size in megabytes. Image inputs need considerably more than plain text."
 				}
 			}
