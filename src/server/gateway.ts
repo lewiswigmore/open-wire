@@ -7,7 +7,7 @@ import { listModels } from '../models';
 import { processChatCompletion, processStreamingChatCompletion, supportsImageInput, writeSseError } from '../routes/chat';
 import { SUPPORTED_IMAGE_MIME_TYPES } from '../routes/content';
 import { legacyStreamResponse, toLegacyCompletion } from '../routes/legacy';
-import { HONOURED_PARAMS, UNSUPPORTED_PARAMS } from '../routes/params';
+import { FORWARDED_PARAMS, HONOURED_PARAMS, UNSUPPORTED_PARAMS } from '../routes/params';
 import { SUPPORTED_SCHEMA_KEYWORDS } from '../routes/schema';
 
 export class Gateway implements vscode.Disposable {
@@ -240,6 +240,7 @@ export class Gateway implements vscode.Disposable {
 			object: 'openwire.capabilities',
 			version,
 			honoured_params: HONOURED_PARAMS,
+			forwarded_params: FORWARDED_PARAMS,
 			unsupported_params: UNSUPPORTED_PARAMS,
 			strict_params: this.config.strictParams,
 			response_format: {

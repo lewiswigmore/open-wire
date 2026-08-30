@@ -55,7 +55,10 @@ const KNOWN_UNSUPPORTED = new Set([
 	'function_call',
 ]);
 
-export const HONOURED_PARAMS: string[] = [...SAMPLING_PARAMS, ...STRUCTURAL_PARAMS].sort();
+/** Parameters OpenWire itself applies with deterministic semantics. */
+export const HONOURED_PARAMS: string[] = [...STRUCTURAL_PARAMS].sort();
+/** Provider-specific options forwarded without a guarantee the selected model applies them. */
+export const FORWARDED_PARAMS: string[] = [...SAMPLING_PARAMS].sort();
 export const UNSUPPORTED_PARAMS: string[] = [...KNOWN_UNSUPPORTED].sort();
 
 export interface ParamReport {

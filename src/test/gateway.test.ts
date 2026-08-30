@@ -98,11 +98,13 @@ describe('auth and routing', () => {
 describe('capabilities', () => {
 	beforeEach(() => startGateway());
 
-	it('reports what the build honours', async () => {
+	it('distinguishes enforced parameters from provider-specific forwarded options', async () => {
 		const body = await (await get('/v1/capabilities')).json() as any;
 		expect(body.object).toBe('openwire.capabilities');
-		expect(body.honoured_params).toContain('temperature');
+		expect(body.honoured_params).not.toContain('temperature');
 		expect(body.honoured_params).toContain('response_format');
+		expect(body.forwarded_params).toContain('temperature');
+		expect(body.forwarded_params).toContain('max_tokens');
 		expect(body.unsupported_params).toContain('logprobs');
 		expect(body.response_format.supported).toContain('json_schema');
 		expect(body.image_input.supported).toBe(true);

@@ -89,6 +89,90 @@ export function assertSchemaSupported(schema: unknown): void {
 			`Remove the unsupported keyword(s) or use response_format {"type":"json_object"}.`,
 		);
 	}
+	const malformed = findMalformedKeywords(schema);
+	if (malformed.length > 0) {
+		throw badRequest(`Invalid JSON Schema: ${malformed.join('; ')}`);
+	}
+}
+
+/**
+ * Validate the value shape of every keyword in the supported subset.
+ * Recognising a keyword is not enough: accepting `minLength: "5"` and then
+ * ignoring it would recreate the silent-no-op failure this validator prevents.
+ */
+function findMalformedKeywords(schema: Record<string, any>, path = 'schema'): string[] {
+	const errors: string[] = [];
+	const at = (keyword: string) => `${path}.${keyword}`;
+
+	if (schema.type !== undefined) {
+		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+		if (types.length === 0 || types.some(t => typeof t !== 'string' || !VALID_TYPES.has(t))) {
+			errors.push(`${at('type')} must be a supported type or non-empty array of supported types`);
+		} else if (new Set(types).size !== types.length) {
+			errors.push(`${at('type')} must not contain duplicate types`);
+		}
+	}
+
+	if (schema.enum !== undefined) {
+		if (!Array.isArray(schema.enum) || schema.enum.length === 0) {
+			errors.push(`${at('enum')} must be a non-empty array`);
+		} else if (schema.enum.some((value: unknown, i: number) =>
+			schema.enum.slice(0, i).some((earlier: unknown) => deepEqual(earlier, value)))) {
+			errors.push(`${at('enum')} must contain unique values`);
+		}
+	}
+
+	if (schema.required !== undefined) {
+		if (!Array.isArray(schema.required) || schema.required.some((key: unknown) => typeof key !== 'string')) {
+			errors.push(`${at('required')} must be an array of strings`);
+		} else if (new Set(schema.required).size !== schema.required.length) {
+			errors.push(`${at('required')} must not contain duplicate names`);
+		}
+	}
+
+	if (schema.properties !== undefined && !isPlainObject(schema.properties)) {
+		errors.push(`${at('properties')} must be an object of schemas`);
+	}
+	if (isPlainObject(schema.properties)) {
+		for (const [name, sub] of Object.entries(schema.properties)) {
+			if (!isPlainObject(sub)) {
+				errors.push(`${at(`properties.${name}`)} must be an object schema`);
+			} else {
+				errors.push(...findMalformedKeywords(sub, at(`properties.${name}`)));
+			}
+		}
+	}
+
+	if (schema.additionalProperties !== undefined &&
+		typeof schema.additionalProperties !== 'boolean' &&
+		!isPlainObject(schema.additionalProperties)) {
+		errors.push(`${at('additionalProperties')} must be a boolean or object schema`);
+	} else if (isPlainObject(schema.additionalProperties)) {
+		errors.push(...findMalformedKeywords(schema.additionalProperties, at('additionalProperties')));
+	}
+
+	if (schema.items !== undefined) {
+		if (!isPlainObject(schema.items)) {
+			errors.push(`${at('items')} must be an object schema`);
+		} else {
+			errors.push(...findMalformedKeywords(schema.items, at('items')));
+		}
+	}
+
+	for (const keyword of ['minimum', 'maximum'] as const) {
+		if (schema[keyword] !== undefined &&
+			(typeof schema[keyword] !== 'number' || !Number.isFinite(schema[keyword]))) {
+			errors.push(`${at(keyword)} must be a finite number`);
+		}
+	}
+	for (const keyword of ['minLength', 'maxLength', 'minItems', 'maxItems'] as const) {
+		if (schema[keyword] !== undefined &&
+			(!Number.isInteger(schema[keyword]) || schema[keyword] < 0)) {
+			errors.push(`${at(keyword)} must be a non-negative integer`);
+		}
+	}
+
+	return errors;
 }
 
 /** Validate a parsed value against the schema subset. Returns error strings. */

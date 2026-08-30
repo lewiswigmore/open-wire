@@ -57,6 +57,25 @@ describe('assertSchemaSupported', () => {
 	it('accepts a supported schema', () => {
 		expect(() => assertSchemaSupported({ type: 'object' })).not.toThrow();
 	});
+
+	it.each([
+		[{ required: 'id' }, /required.*array of strings/],
+		[{ minLength: '5' }, /minLength.*non-negative integer/],
+		[{ items: true }, /items.*object schema/],
+		[{ properties: [] }, /properties.*object of schemas/],
+		[{ additionalProperties: 1 }, /additionalProperties.*boolean or object schema/],
+		[{ type: [] }, /type.*non-empty array/],
+		[{ enum: [] }, /enum.*non-empty array/],
+	] as const)('rejects malformed keyword values in %j', (schema, message) => {
+		expect(() => assertSchemaSupported(schema)).toThrow(message);
+	});
+
+	it('rejects malformed keyword values in nested schemas', () => {
+		expect(() => assertSchemaSupported({
+			type: 'object',
+			properties: { child: { type: 'string', maxLength: -1 } },
+		})).toThrow(/properties\.child\.maxLength.*non-negative integer/);
+	});
 });
 
 describe('validateAgainstSchema', () => {

@@ -76,17 +76,20 @@ tool-call parts, so an XML block can still reach the client as ordinary text.
 
 ## Request parameters
 
-OpenWire never silently ignores a parameter. Every field lands in one of three buckets, and
+OpenWire never silently ignores a parameter. Every field lands in one of four buckets, and
 `GET /v1/capabilities` reports the split for the running build.
 
 | Bucket | Behaviour | Fields |
 |--------|-----------|--------|
-| **Honoured** | Forwarded to the model or handled by OpenWire | `model`, `messages`, `stream`, `stream_options`, `tools`, `tool_choice`, `response_format`, `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `seed`, `presence_penalty`, `frequency_penalty` |
-| **Rejected** | `400`, because honouring them partially would be misleading | `n` greater than 1, out-of-range sampling values, unsupported `response_format.type`, unsupported JSON Schema keywords, remote image URLs |
+| **Honoured** | Applied and enforced by OpenWire | `model`, `messages`, `stream`, `stream_options`, `tools`, `tool_choice`, `response_format`, `max_completion_tokens`, `n` |
+| **Forwarded** | Passed through `modelOptions`; support and exact semantics depend on the selected VS Code model provider | `temperature`, `top_p`, `max_tokens`, `stop`, `seed`, `presence_penalty`, `frequency_penalty` |
+| **Rejected** | `400`, because honouring them partially would be misleading | `n` greater than 1, out-of-range sampling values, unsupported `response_format.type`, unsupported or malformed JSON Schema constraints, invalid `tools`/`tool_choice` combinations, remote image URLs |
 | **Reported** | Accepted, but listed under `x_openwire.unsupported_params` in the response | `logprobs`, `top_logprobs`, `logit_bias`, `user`, `parallel_tool_calls`, `store`, `metadata`, `service_tier`, and other OpenAI fields with no VS Code equivalent |
 
-Set `openWire.server.strictParams` to `true` to turn the third bucket into `400`s as well.
-That is the right setting for agents that need a hard guarantee about what was applied.
+Set `openWire.server.strictParams` to `true` to turn the **Reported** bucket into `400`s as well.
+That gives agents a hard guarantee that unsupported fields are rejected. It cannot guarantee
+that a model provider applies fields in the **Forwarded** bucket; check the provider's own
+capabilities when those controls are required.
 
 Invalid values are rejected rather than clamped. `temperature: 9` returns a `400`; it does
 not quietly become `2`.
