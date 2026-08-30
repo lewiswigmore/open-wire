@@ -68,7 +68,10 @@ export function planToolChoice(toolChoice: unknown): ToolChoicePlan {
 
 /** Map OpenAI tool definitions onto the VS Code tool shape. */
 export function mapTools(rawTools: unknown): ForwardedTool[] {
-	if (!Array.isArray(rawTools)) return [];
+	if (rawTools === undefined) return [];
+	if (!Array.isArray(rawTools)) {
+		throw badRequest('tools must be an array');
+	}
 	return rawTools.map((t: any) => {
 		const fn = t?.function || t;
 		if (!fn || typeof fn.name !== 'string' || !fn.name) {
@@ -90,7 +93,13 @@ export function applyToolChoice(
 	tools: ForwardedTool[],
 	plan: ToolChoicePlan,
 ): { tools: ForwardedTool[]; required: boolean } | null {
-	if (plan.mode === 'none' || tools.length === 0) return null;
+	if (plan.mode === 'none') return null;
+	if (tools.length === 0) {
+		if (plan.mode === 'required') {
+			throw badRequest('tool_choice "required" needs at least one tool');
+		}
+		return null;
+	}
 
 	if (plan.mode === 'required' && plan.only) {
 		const match = tools.filter(t => t.name === plan.only);

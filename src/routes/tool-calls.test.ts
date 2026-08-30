@@ -101,8 +101,13 @@ describe('mapTools', () => {
 		expect(() => mapTools([{ description: 'no name' }])).toThrow(/function.name/);
 	});
 
-	it('returns an empty list for non-arrays', () => {
+	it('returns an empty list when tools are omitted', () => {
 		expect(mapTools(undefined)).toEqual([]);
+	});
+
+	it('rejects a non-array tools value', () => {
+		expect(() => mapTools({ name: 'a' })).toThrow(/tools must be an array/);
+		expect(() => mapTools(null)).toThrow(/tools must be an array/);
 	});
 });
 
@@ -118,6 +123,10 @@ describe('applyToolChoice', () => {
 
 	it('returns null when there are no tools', () => {
 		expect(applyToolChoice([], { mode: 'auto' })).toBeNull();
+	});
+
+	it('rejects required mode when there are no tools', () => {
+		expect(() => applyToolChoice([], { mode: 'required' })).toThrow(/at least one tool/);
 	});
 
 	it('forwards all tools in auto mode', () => {

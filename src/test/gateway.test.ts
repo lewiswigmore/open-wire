@@ -421,6 +421,24 @@ describe('tool_choice', () => {
 		});
 		expect(res.status).toBe(400);
 	});
+
+	it('rejects required tool choice when no tools were supplied', async () => {
+		const res = await post('/v1/chat/completions', {
+			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			tool_choice: 'required',
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json() as any).error.message).toMatch(/at least one tool/);
+	});
+
+	it('rejects a malformed tools value instead of silently dropping it', async () => {
+		const res = await post('/v1/chat/completions', {
+			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			tools: { type: 'function', function: { name: 'alpha' } },
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json() as any).error.message).toMatch(/tools must be an array/);
+	});
 });
 
 describe('images', () => {
