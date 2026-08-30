@@ -145,8 +145,39 @@ export class Gateway implements vscode.Disposable {
 		try {
 			await this.route(req, res);
 		} catch (err: any) {
-			if (!res.headersSent) {
-				this.sendError(res, err.status || 500, err.message || 'Internal server error');
+			const status = err.status || 500;
+			if (status === 413 && !res.headersSent) {
+				// Unknown-length overflows cannot be drained safely. For a declared
+				// length, leave the response keep-alive until the short drain grace has
+				// ended so ordinary clients can receive the JSON response without EPIPE.
+				if (!err.allowDrainGrace) res.setHeader('Connection', 'close');
+				this.sendError(res, status, err.message || 'Payload too large');
+				await new Promise<void>(resolve => {
+					if (res.writableFinished) resolve();
+					else {
+						res.once('finish', resolve);
+						res.once('close', resolve);
+					}
+				});
+				if (err.allowDrainGrace && !req.complete && !req.destroyed) {
+					await new Promise<void>(resolve => {
+						let settled = false;
+						const done = () => {
+							if (settled) return;
+							settled = true;
+							clearTimeout(timer);
+							resolve();
+						};
+						const timer = setTimeout(done, 250);
+						req.once('end', done);
+						req.once('aborted', done);
+						req.once('close', done);
+						req.resume();
+					});
+				}
+				req.destroy();
+			} else if (!res.headersSent) {
+				this.sendError(res, status, err.message || 'Internal server error');
 			} else if (!res.writableEnded) {
 				writeSseError(res, err.message || 'Internal server error', err.status);
 				res.end();
@@ -281,12 +312,26 @@ export class Gateway implements vscode.Disposable {
 	private async readBody(req: IncomingMessage): Promise<any> {
 		const chunks: Buffer[] = [];
 		let size = 0;
+		let oversized = false;
 		const maxSize = this.config.maxRequestBodyMb * 1024 * 1024;
+		const contentLength = Number(req.headers['content-length']);
+		const declaredOversized = Number.isFinite(contentLength) && contentLength > maxSize;
+		if (declaredOversized) {
+			req.pause();
+			throw { status: 413, message: 'Payload too large', allowDrainGrace: true };
+		}
 
 		await new Promise<void>((resolve, reject) => {
 			req.on('data', (chunk: Buffer) => {
+				if (oversized) return;
 				size += chunk.length;
-				if (size > maxSize) { req.destroy(); reject({ status: 413, message: 'Payload too large' }); return; }
+				if (size > maxSize) {
+					oversized = true;
+					chunks.length = 0;
+					req.pause();
+					reject({ status: 413, message: 'Payload too large' });
+					return;
+				}
 				chunks.push(chunk);
 			});
 			req.on('end', resolve);

@@ -49,6 +49,11 @@ describe('parseResponseFormat', () => {
 		expect(() => parseResponseFormat('json')).toThrow(/must be an object/);
 	});
 
+	it('rejects a supplied response_format without a type', () => {
+		expect(() => parseResponseFormat({ json_schema: { schema: { type: 'object' } } }))
+			.toThrow(/response_format.type is required/);
+	});
+
 	it('rejects json_schema without a json_schema object', () => {
 		expect(() => parseResponseFormat({ type: 'json_schema' })).toThrow(/must be an object/);
 	});

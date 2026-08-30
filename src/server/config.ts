@@ -25,6 +25,11 @@ export interface ServerConfig {
 
 const SECTION = 'openWire.server';
 
+function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
+	const number = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+	return Math.min(max, Math.max(min, Math.trunc(number)));
+}
+
 export function loadConfig(): ServerConfig {
 	const cfg = vscode.workspace.getConfiguration(SECTION);
 	return {
@@ -42,8 +47,8 @@ export function loadConfig(): ServerConfig {
 		enableLogging: cfg.get<boolean>('enableLogging', false),
 		autoStart: cfg.get<boolean>('autoStart', true),
 		strictParams: cfg.get<boolean>('strictParams', false),
-		jsonModeMaxRetries: Math.max(0, cfg.get<number>('jsonModeMaxRetries', 1)),
-		maxRequestBodyMb: Math.max(1, cfg.get<number>('maxRequestBodyMb', 10)),
+		jsonModeMaxRetries: boundedInteger(cfg.get<unknown>('jsonModeMaxRetries', 1), 1, 0, 3),
+		maxRequestBodyMb: boundedInteger(cfg.get<unknown>('maxRequestBodyMb', 10), 10, 1, 100),
 	};
 }
 

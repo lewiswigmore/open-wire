@@ -32,8 +32,8 @@ describe('normalizeContent', () => {
 		expect(normalizeContent(undefined)).toBe('');
 	});
 
-	it('stringifies other types', () => {
-		expect(normalizeContent(42)).toBe('42');
+	it('rejects malformed scalar content', () => {
+		expect(() => normalizeContent(42)).toThrow(/content must be/);
 	});
 });
 
@@ -78,12 +78,21 @@ describe('image content parts', () => {
 			.toThrow(/not supported/);
 	});
 
+	it('rejects unknown and malformed content parts', () => {
+		expect(() => normalizeContentParts([{ type: 'video', url: 'x' }]))
+			.toThrow(/Content part type "video" is not supported/);
+		expect(() => normalizeContentParts([{ type: 'text', text: 42 }]))
+			.toThrow(/text part must contain a string/);
+		expect(() => normalizeContentParts([{}]))
+			.toThrow(/content part must specify a type/);
+	});
+
 	it('detects image parts across messages', () => {
 		const msgs = normalizeMessages([
 			{ role: 'user', content: 'hi' },
 			{
 				role: 'user',
-				content: [{ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${PNG_1PX}` } }],
+				content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_1PX}` } }],
 			},
 		]);
 		expect(hasImageParts(msgs)).toBe(true);
@@ -100,9 +109,33 @@ describe('parseDataUri', () => {
 	});
 
 	it('parses mime type and payload', () => {
-		const parsed = parseDataUri(`data:image/jpeg;base64,${PNG_1PX}`);
-		expect(parsed?.mimeType).toBe('image/jpeg');
+		const parsed = parseDataUri(`data:image/png;base64,${PNG_1PX}`);
+		expect(parsed?.mimeType).toBe('image/png');
 		expect(parsed?.base64).toBe(PNG_1PX);
+	});
+
+	it('rejects non-canonical or empty base64 payloads', () => {
+		expect(() => parseDataUri('data:image/png;base64,A=')).toThrow(/valid base64/);
+		expect(() => parseDataUri('data:image/png;base64,AAAA=')).toThrow(/valid base64/);
+		expect(() => parseDataUri(`data:image/png;base64,${PNG_1PX.slice(0, 8)}\n${PNG_1PX.slice(8)}`))
+			.toThrow(/whitespace/);
+	});
+
+	it('rejects a data URI without a declared image MIME type', () => {
+		expect(() => parseDataUri(`data:;base64,${PNG_1PX}`))
+			.toThrow(/must declare an image MIME type/);
+	});
+
+	it('rejects bytes whose signature does not match the declared MIME type', () => {
+		expect(() => parseDataUri(`data:image/jpeg;base64,${PNG_1PX}`))
+			.toThrow(/does not match declared image type/);
+	});
+
+	it('rejects decoded images larger than 8 MiB', () => {
+		const bytes = Buffer.alloc(8 * 1024 * 1024 + 1);
+		bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+		expect(() => parseDataUri(`data:image/png;base64,${bytes.toString('base64')}`))
+			.toThrow(/exceeds 8 MiB/);
 	});
 });
 
@@ -119,8 +152,78 @@ describe('normalizeMessages', () => {
 		expect(msgs[0].tool_call_id).toBe('call_1');
 	});
 
-	it('returns an empty array for non-array input', () => {
-		expect(normalizeMessages(undefined)).toEqual([]);
+	it('rejects missing, non-array, and empty message lists', () => {
+		expect(() => normalizeMessages(undefined)).toThrow(/messages must be an array/);
+		expect(() => normalizeMessages({})).toThrow(/messages must be an array/);
+		expect(() => normalizeMessages([])).toThrow(/at least one message/);
+	});
+
+	it('rejects malformed entries and unknown roles', () => {
+		expect(() => normalizeMessages([null])).toThrow(/message at index 0 must be an object/);
+		expect(() => normalizeMessages([{ role: 'admin', content: 'x' }]))
+			.toThrow(/unsupported role/);
+		expect(() => normalizeMessages([{ role: 'user' }])).toThrow(/content is required/);
+	});
+
+	it('requires tool messages to identify their tool call', () => {
+		expect(() => normalizeMessages([{ role: 'tool', content: 'result' }]))
+			.toThrow(/tool_call_id/);
+	});
+
+	it('validates assistant tool call entries', () => {
+		for (const toolCall of [
+			null,
+			{},
+			{ id: 'call_1', type: 'other', function: { name: 'lookup', arguments: '{}' } },
+			{ id: '', type: 'function', function: { name: 'lookup', arguments: '{}' } },
+			{ id: 'call_1', type: 'function', function: { name: '', arguments: '{}' } },
+			{ id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{bad' } },
+		]) {
+			expect(() => normalizeMessages([{ role: 'assistant', content: null, tool_calls: [toolCall] }]))
+				.toThrow(/tool_calls/);
+		}
+	});
+
+	it('accepts a valid assistant tool call without text content', () => {
+		const messages = normalizeMessages([{
+			role: 'assistant',
+			content: null,
+			tool_calls: [{
+				id: 'call_1',
+				type: 'function',
+				function: { name: 'lookup', arguments: '{"q":"x"}' },
+			}],
+		}]);
+		expect(messages[0].tool_calls).toHaveLength(1);
+	});
+
+	it('rejects tool_calls on non-assistant messages', () => {
+		expect(() => normalizeMessages([{
+			role: 'user', content: 'x',
+			tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'x', arguments: '{}' } }],
+		}])).toThrow(/tool_calls are only valid/);
+	});
+
+	it('enforces role-specific content requirements', () => {
+		for (const role of ['system', 'user', 'tool']) {
+			const message = role === 'tool'
+				? { role, content: null, tool_call_id: 'call_1' }
+				: { role, content: null };
+			expect(() => normalizeMessages([message])).toThrow(/requires non-empty content/);
+		}
+		expect(() => normalizeMessages([{ role: 'assistant', content: null }]))
+			.toThrow(/requires content or tool_calls/);
+	});
+
+	it('rejects image parts outside user messages', () => {
+		for (const role of ['system', 'assistant', 'tool']) {
+			const message: Record<string, unknown> = {
+				role,
+				content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_1PX}` } }],
+			};
+			if (role === 'tool') message.tool_call_id = 'call_1';
+			expect(() => normalizeMessages([message])).toThrow(/image parts are only supported in user messages/);
+		}
 	});
 });
 

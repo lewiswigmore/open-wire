@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { request as httpRequest } from 'http';
 import type { AddressInfo } from 'net';
 import { Gateway } from '../server/gateway';
 import {
@@ -93,6 +94,82 @@ describe('auth and routing', () => {
 		});
 		expect(res.status).toBe(404);
 	});
+
+	it('returns a JSON 413 for an oversized request body', async () => {
+		await gateway?.stop();
+		await startGateway({ maxRequestBodyMb: 1 });
+		const res = await post('/v1/chat/completions', {
+			model: 'test-model',
+			messages: [{ role: 'user', content: 'x'.repeat(2 * 1024 * 1024) }],
+		});
+		expect(res.status).toBe(413);
+		expect((await res.json() as any).error.message).toBe('Payload too large');
+	});
+
+	it('rejects a declared oversized body before the upload completes', async () => {
+		await gateway?.stop();
+		await startGateway({ maxRequestBodyMb: 1, maxConcurrentRequests: 1 });
+
+		const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+			let receivedResponse = false;
+			const req = httpRequest(`${baseUrl}/v1/chat/completions`, {
+				method: 'POST',
+				headers: {
+					Authorization: ['Bearer', API_KEY].join(' '),
+					'Content-Type': 'application/json',
+					'Content-Length': 100 * 1024 * 1024,
+				},
+			}, res => {
+				receivedResponse = true;
+				let body = '';
+				res.setEncoding('utf8');
+				res.on('data', chunk => { body += chunk; });
+				res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+			});
+			req.on('error', err => { if (!receivedResponse) reject(err); });
+			req.write('{"incomplete":');
+			// Deliberately do not finish the declared 100 MiB body.
+		});
+
+		expect(result.status).toBe(413);
+		expect(JSON.parse(result.body).error.message).toBe('Payload too large');
+	}, 1_000);
+
+	it('closes a slow chunked upload only after flushing the JSON 413', async () => {
+		await gateway?.stop();
+		await startGateway({ maxRequestBodyMb: 1, maxConcurrentRequests: 1 });
+
+		const result = await new Promise<{ status: number; body: string; connection: string | undefined }>(
+			(resolve, reject) => {
+				const req = httpRequest(`${baseUrl}/v1/chat/completions`, {
+					method: 'POST',
+					headers: {
+						Authorization: ['Bearer', API_KEY].join(' '),
+						'Content-Type': 'application/json',
+						'Transfer-Encoding': 'chunked',
+					},
+				}, res => {
+					let body = '';
+					res.setEncoding('utf8');
+					res.on('data', chunk => { body += chunk; });
+					res.on('end', () => resolve({
+						status: res.statusCode ?? 0,
+						body,
+						connection: res.headers.connection,
+					}));
+				});
+				req.on('error', reject);
+				req.write('{"model":"test-model","messages":[{"role":"user","content":"');
+				for (let i = 0; i < 17; i++) req.write('x'.repeat(64 * 1024));
+				// Deliberately do not call end(): the server must terminate the upload.
+			},
+		);
+
+		expect(result.status).toBe(413);
+		expect(JSON.parse(result.body).error.message).toBe('Payload too large');
+		expect(result.connection).toBe('close');
+		expect(gateway!.getStats().activeRequests).toBe(0);
+	});
 });
 
 describe('capabilities', () => {
@@ -130,6 +207,19 @@ describe('chat completions', () => {
 		expect(body.choices[0].message.content).toBe('hello there');
 		expect(body.choices[0].finish_reason).toBe('stop');
 		expect(body.usage.total_tokens).toBeGreaterThan(0);
+	});
+
+	it.each([
+		[{ role: 'user', content: null }, /non-empty content/],
+		[{ role: 'assistant', content: null, tool_calls: [{}] }, /tool_calls/],
+		[{
+			role: 'system',
+			content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_1PX}` } }],
+		}, /image parts are only supported/],
+	])('returns 400 for malformed message %#', async (message, error) => {
+		const res = await post('/v1/chat/completions', { model: 'test-model', messages: [message] });
+		expect(res.status).toBe(400);
+		expect((await res.json() as any).error.message).toMatch(error);
 	});
 
 	it('returns native tool calls', async () => {
