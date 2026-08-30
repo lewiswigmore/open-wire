@@ -18,6 +18,9 @@ export interface ServerConfig {
 	requestTimeoutSeconds: number;
 	enableLogging: boolean;
 	autoStart: boolean;
+	strictParams: boolean;
+	jsonModeMaxRetries: number;
+	maxRequestBodyMb: number;
 }
 
 const SECTION = 'openWire.server';
@@ -38,6 +41,9 @@ export function loadConfig(): ServerConfig {
 		requestTimeoutSeconds: cfg.get<number>('requestTimeoutSeconds', 300),
 		enableLogging: cfg.get<boolean>('enableLogging', false),
 		autoStart: cfg.get<boolean>('autoStart', true),
+		strictParams: cfg.get<boolean>('strictParams', false),
+		jsonModeMaxRetries: Math.max(0, cfg.get<number>('jsonModeMaxRetries', 1)),
+		maxRequestBodyMb: Math.max(1, cfg.get<number>('maxRequestBodyMb', 10)),
 	};
 }
 

@@ -2,7 +2,7 @@
 	"name": "open-wire",
 	"displayName": "OpenWire",
 	"description": "Expose VS Code language models as an OpenAI-compatible REST API for agents and tools",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"publisher": "lewiswigmore",
 	"license": "MIT",
 	"icon": "media/icon.png",
@@ -143,6 +143,21 @@
 					"type": "boolean",
 					"default": false,
 					"description": "Enable detailed logging to the output channel"
+				},
+				"openWire.server.strictParams": {
+					"type": "boolean",
+					"default": false,
+					"description": "Reject requests containing parameters OpenWire cannot honour, instead of reporting them in the response"
+				},
+				"openWire.server.jsonModeMaxRetries": {
+					"type": "number",
+					"default": 1,
+					"description": "How many repair attempts to make when response_format requires JSON and the model returns something invalid"
+				},
+				"openWire.server.maxRequestBodyMb": {
+					"type": "number",
+					"default": 10,
+					"description": "Maximum request body size in megabytes. Image inputs need considerably more than plain text."
 				}
 			}
 		}
