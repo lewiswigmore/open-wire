@@ -40,9 +40,9 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 
 Any model registered with VS Code's Language Model API is exposed automatically. In practice that means:
 
-- **Claude.** Opus, Sonnet, Haiku
-- **GPT.** Codex, GPT-4.1, o4-mini
-- **Gemini.** Gemini Pro, Gemini Flash
+- **Claude.** Whatever Anthropic model family/tier is currently registered by an installed extension (e.g. Opus, Sonnet, Haiku)
+- **GPT.** Whatever OpenAI model family is currently registered by an installed extension (e.g. GPT and reasoning-tier variants)
+- **Gemini.** Whatever Google model family is currently registered by an installed extension (e.g. Pro, Flash)
 - **Ollama.** Only when a separate extension registers your local models with VS Code. OpenWire never talks to Ollama directly.
 - Anything else registered with the VS Code Language Model API
 
@@ -79,7 +79,7 @@ curl http://localhost:3030/v1/chat/completions \
   -H "Authorization: Bearer $OPENWIRE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4.6",
+    "model": "<model-id>",
     "messages": [{"role": "user", "content": "Hello"}]
   }'
 
@@ -88,13 +88,13 @@ curl http://localhost:3030/v1/chat/completions \
   -H "Authorization: Bearer $OPENWIRE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4.6",
+    "model": "<model-id>",
     "messages": [{"role": "user", "content": "Explain zero-knowledge proofs"}],
     "stream": true
   }'
 ```
 
-Swap `claude-sonnet-4.6` for any id from `GET /v1/models`. OpenWire matches on model id or family and has no built-in aliases, so an unrecognised name returns a 404 listing what is available.
+Replace `<model-id>` with any id from `GET /v1/models`. OpenWire matches on model id or family and has no built-in aliases, so an unrecognised name returns a 404 listing what is available.
 
 ## Endpoints
 
@@ -145,8 +145,8 @@ OpenWire works as a model provider for [OpenClaw](https://openclaw.ai) agents. R
         "api": "openai-completions",
         "models": [
           {
-            "id": "claude-sonnet-4.6",
-            "name": "Claude Sonnet 4.6",
+            "id": "<model-id>",
+            "name": "<Display Name>",
             "contextWindow": 128000,
             "maxTokens": 8192
           }
@@ -158,7 +158,7 @@ OpenWire works as a model provider for [OpenClaw](https://openclaw.ai) agents. R
   "agents": {
     "defaults": {
       "model": {
-        "primary": "copilot-proxy/claude-sonnet-4.6"
+        "primary": "copilot-proxy/<model-id>"
       }
     }
   },
