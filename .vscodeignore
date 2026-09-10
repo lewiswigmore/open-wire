@@ -1,10 +1,14 @@
 .vscode/**
 .git/**
 .github/**
+.agents/**
 out/**
 node_modules/**
 src/**
+.env
+.env.*
 .gitignore
+skills-lock.json
 esbuild.js
 tsconfig.json
 vitest.config.*
