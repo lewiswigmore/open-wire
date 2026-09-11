@@ -182,8 +182,10 @@ Vision requests use the standard OpenAI content-part shape:
 
 Install from the VS Code Marketplace, or load the `.vsix` yourself. The server starts on `http://127.0.0.1:3030` as soon as VS Code loads the extension.
 
+If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session — check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings.
+
 ```bash
-export OPENWIRE_API_KEY="change-me-openwire-key"
+export OPENWIRE_API_KEY="<key from the OpenWire output channel, or your own configured value>"
 
 # List available models
 curl http://localhost:3030/v1/models \
@@ -231,7 +233,7 @@ All settings live under `openWire.server.*` in VS Code:
 | `autoStart` | `true` | Start server when VS Code launches |
 | `host` | `127.0.0.1` | Bind address |
 | `port` | `3030` | Port number |
-| `apiKey` | `"change-me-openwire-key"` | Bearer token required for authentication (change this locally) |
+| `apiKey` | `""` (auto-generated per session if empty) | Bearer token required for authentication |
 | `corsAllowedOrigins` | `["http://localhost", "http://127.0.0.1", "http://[::1]"]` | Allowed browser origins for CORS |
 | `defaultModel` | `""` | Fallback model when none specified |
 | `defaultSystemPrompt` | `""` | Injected system prompt if none present |
@@ -260,7 +262,7 @@ OpenWire works as a model provider for [OpenClaw](https://openclaw.ai) agents. R
     "providers": {
       "copilot-proxy": {
         "baseUrl": "http://localhost:3030/v1",
-        "apiKey": "change-me-openwire-key",
+        "apiKey": "<key from the OpenWire output channel, or your own configured value>",
         "api": "openai-completions",
         "models": [
           {

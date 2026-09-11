@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
 	DEFAULT_API_KEY,
 	DEFAULT_CORS_ALLOWED_ORIGINS,
+	isApiKeyUnconfigured,
 	normalizeApiKey,
 	normalizeCorsAllowedOrigins,
 } from './security';
@@ -10,6 +11,7 @@ export interface ServerConfig {
 	host: string;
 	port: number;
 	apiKey: string;
+	apiKeyWasGenerated: boolean;
 	corsAllowedOrigins: string[];
 	defaultModel: string;
 	defaultSystemPrompt: string;
@@ -32,10 +34,12 @@ function boundedInteger(value: unknown, fallback: number, min: number, max: numb
 
 export function loadConfig(): ServerConfig {
 	const cfg = vscode.workspace.getConfiguration(SECTION);
+	const rawApiKey = cfg.get<string>('apiKey', DEFAULT_API_KEY);
 	return {
 		host: cfg.get<string>('host', '127.0.0.1'),
 		port: cfg.get<number>('port', 3030),
-		apiKey: normalizeApiKey(cfg.get<string>('apiKey', DEFAULT_API_KEY)),
+		apiKey: normalizeApiKey(rawApiKey),
+		apiKeyWasGenerated: isApiKeyUnconfigured(rawApiKey),
 		corsAllowedOrigins: normalizeCorsAllowedOrigins(
 			cfg.get<unknown>('corsAllowedOrigins', DEFAULT_CORS_ALLOWED_ORIGINS),
 		),
