@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'http';
+import { timingSafeEqual } from 'crypto';
 import type { AddressInfo } from 'net';
 import * as vscode from 'vscode';
 import { loadConfig, type ServerConfig } from './config';
@@ -113,7 +114,10 @@ export class Gateway implements vscode.Disposable {
 
 		// Auth check
 		const auth = req.headers['authorization'];
-		if (!auth || auth !== `Bearer ${this.config.apiKey}`) {
+		const authValue = typeof auth === 'string' ? auth : '';
+		const expected = Buffer.from(`Bearer ${this.config.apiKey}`);
+		const got = Buffer.from(authValue);
+		if (got.length !== expected.length || !timingSafeEqual(got, expected)) {
 			this.sendError(res, 401, 'Invalid or missing API key');
 			return;
 		}
