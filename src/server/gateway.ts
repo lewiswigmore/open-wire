@@ -56,6 +56,9 @@ export class Gateway implements vscode.Disposable {
 
 		const addr = this.server.address() as AddressInfo;
 		this.log(`Listening on http://${addr.address}:${addr.port}`);
+		if (this.config.apiKeyWasGenerated) {
+			this.log(`No API key configured — generated one for this session: ${this.config.apiKey}`);
+		}
 		this.stats.startTime = Date.now();
 		this.updateStatus(true);
 		this._onDidChangeStatus.fire();

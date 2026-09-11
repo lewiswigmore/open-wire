@@ -1,9 +1,31 @@
+import { randomUUID } from 'crypto';
+
+// Placeholder shown in package.json's configuration schema. It is never used as a
+// live credential: normalizeApiKey() replaces it (and any other empty value) with a
+// random per-install key so the server never runs with a publicly known secret.
 export const DEFAULT_API_KEY = 'change-me-openwire-key';
 export const DEFAULT_CORS_ALLOWED_ORIGINS = ['http://localhost', 'http://127.0.0.1', 'http://[::1]'];
 
+let generatedApiKey: string | undefined;
+
+function getGeneratedApiKey(): string {
+	if (!generatedApiKey) {
+		generatedApiKey = randomUUID();
+	}
+	return generatedApiKey;
+}
+
 export function normalizeApiKey(rawApiKey: string | undefined): string {
 	const value = rawApiKey?.trim() ?? '';
-	return value.length > 0 ? value : DEFAULT_API_KEY;
+	if (value.length === 0 || value === DEFAULT_API_KEY) {
+		return getGeneratedApiKey();
+	}
+	return value;
+}
+
+export function isApiKeyUnconfigured(rawApiKey: string | undefined): boolean {
+	const value = rawApiKey?.trim() ?? '';
+	return value.length === 0 || value === DEFAULT_API_KEY;
 }
 
 export function normalizeCorsAllowedOrigins(rawOrigins: unknown): string[] {

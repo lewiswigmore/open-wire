@@ -8,10 +8,19 @@ import {
 } from './security';
 
 describe('normalizeApiKey', () => {
-	it('falls back to the placeholder default when value is empty', () => {
-		expect(normalizeApiKey('')).toBe(DEFAULT_API_KEY);
-		expect(normalizeApiKey('   ')).toBe(DEFAULT_API_KEY);
-		expect(normalizeApiKey(undefined)).toBe(DEFAULT_API_KEY);
+	it('never returns the public placeholder default', () => {
+		expect(normalizeApiKey('')).not.toBe(DEFAULT_API_KEY);
+		expect(normalizeApiKey('   ')).not.toBe(DEFAULT_API_KEY);
+		expect(normalizeApiKey(undefined)).not.toBe(DEFAULT_API_KEY);
+		expect(normalizeApiKey(DEFAULT_API_KEY)).not.toBe(DEFAULT_API_KEY);
+	});
+
+	it('generates a non-empty random key when unconfigured', () => {
+		expect(normalizeApiKey('').length).toBeGreaterThan(0);
+	});
+
+	it('returns the same generated key across calls in a session', () => {
+		expect(normalizeApiKey('')).toBe(normalizeApiKey(undefined));
 	});
 
 	it('trims and returns explicit API keys', () => {
