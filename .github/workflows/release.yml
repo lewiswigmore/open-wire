@@ -57,3 +57,15 @@ jobs:
         with:
           files: ${{ steps.package.outputs.vsix }}
           generate_release_notes: true
+      - name: Publish to OpenVSX
+        env:
+          OPENVSX_PAT: ${{ secrets.OPENVSX_PAT }}
+          VSIX_PATH: ${{ steps.package.outputs.vsix }}
+        run: |
+          if [ -z "$OPENVSX_PAT" ]; then
+            echo "OPENVSX_PAT is not set; skipping the OpenVSX publish."
+            echo "To publish to OpenVSX, create the publisher namespace on open-vsx.org,"
+            echo "generate an access token, and add it as the OPENVSX_PAT repository secret."
+            exit 0
+          fi
+          npx --yes ovsx@1.3.0 publish --packagePath "$VSIX_PATH" --skip-duplicate -p "$OPENVSX_PAT"
