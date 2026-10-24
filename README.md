@@ -372,8 +372,15 @@ To cut a release:
 
 The Release workflow checks the tag against the version in `package.json` and
 stops if they disagree. It then runs lint, build and test, packages a single
-`.vsix`, publishes that exact file to the VS Code Marketplace, and attaches it
-to a GitHub release. Publishing needs a `VSCE_PAT` repository secret.
+`.vsix`, publishes that exact file to the VS Code Marketplace, attaches it
+to a GitHub release, and publishes the same file to OpenVSX. Marketplace
+publishing needs a `VSCE_PAT` repository secret; OpenVSX publishing needs
+`OPENVSX_PAT` and is skipped when that secret is absent.
+
+One-time OpenVSX setup: sign in at [open-vsx.org](https://open-vsx.org) with
+your GitHub account, create the `lewiswigmore` namespace, generate a personal
+access token, and add it as the `OPENVSX_PAT` repository secret. The next
+release tag then publishes there automatically.
 
 ## License
 
