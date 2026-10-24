@@ -11,6 +11,9 @@ import { legacyStreamResponse, toLegacyCompletion } from '../routes/legacy';
 import { FORWARDED_PARAMS, HONOURED_PARAMS, UNSUPPORTED_PARAMS } from '../routes/params';
 import { SUPPORTED_SCHEMA_KEYWORDS } from '../routes/schema';
 
+/** How long a rejected mid-upload request may drain before the socket is torn down. */
+const DRAIN_GRACE_MS = 250;
+
 export class Gateway implements vscode.Disposable {
 	private server: Server | undefined;
 	private config: ServerConfig;
@@ -154,35 +157,14 @@ export class Gateway implements vscode.Disposable {
 		} catch (err: any) {
 			const status = err.status || 500;
 			if (status === 413 && !res.headersSent) {
-				// Unknown-length overflows cannot be drained safely. For a declared
-				// length, leave the response keep-alive until the short drain grace has
-				// ended so ordinary clients can receive the JSON response without EPIPE.
+				// An unknown-length upload is advertised as close because the socket
+				// is destroyed once the bounded drain below ends. A declared length
+				// stays keep-alive: Node then leaves the socket open through the
+				// drain instead of tearing it down itself at response finish, which
+				// would RST clients that have not read the response yet.
 				if (!err.allowDrainGrace) res.setHeader('Connection', 'close');
 				this.sendError(res, status, err.message || 'Payload too large');
-				await new Promise<void>(resolve => {
-					if (res.writableFinished) resolve();
-					else {
-						res.once('finish', resolve);
-						res.once('close', resolve);
-					}
-				});
-				if (err.allowDrainGrace && !req.complete && !req.destroyed) {
-					await new Promise<void>(resolve => {
-						let settled = false;
-						const done = () => {
-							if (settled) return;
-							settled = true;
-							clearTimeout(timer);
-							resolve();
-						};
-						const timer = setTimeout(done, 250);
-						req.once('end', done);
-						req.once('aborted', done);
-						req.once('close', done);
-						req.resume();
-					});
-				}
-				req.destroy();
+				this.drainAndClose(req, res);
 			} else if (!res.headersSent) {
 				this.sendError(res, status, err.message || 'Internal server error');
 			} else if (!res.writableEnded) {
@@ -193,6 +175,48 @@ export class Gateway implements vscode.Disposable {
 			clearTimeout(timeout);
 			this.activeRequests--;
 		}
+	}
+
+	/**
+	 * Finish a mid-upload 413: flush the response, then tear down the socket.
+	 *
+	 * Destroying the socket the moment the response is flushed sends a RST
+	 * while the client is still uploading. Windows discards data it has
+	 * already received but not yet read when a RST arrives, so clients there
+	 * lose the 413 response and report ECONNRESET instead. Draining briefly
+	 * before the destroy gives every platform time to read the response; the
+	 * timer keeps the wait bounded because an unknown-length upload may never
+	 * end. Runs in the background: the request is finished from the caller's
+	 * point of view once the response is queued, and the concurrency slot must
+	 * not stay occupied during socket cleanup.
+	 */
+	private drainAndClose(req: IncomingMessage, res: ServerResponse): void {
+		void (async () => {
+			await new Promise<void>(resolve => {
+				if (res.writableFinished) resolve();
+				else {
+					res.once('finish', resolve);
+					res.once('close', resolve);
+				}
+			});
+			if (!req.complete && !req.destroyed) {
+				await new Promise<void>(resolve => {
+					let settled = false;
+					const done = () => {
+						if (settled) return;
+						settled = true;
+						clearTimeout(timer);
+						resolve();
+					};
+					const timer = setTimeout(done, DRAIN_GRACE_MS);
+					req.once('end', done);
+					req.once('aborted', done);
+					req.once('close', done);
+					req.resume();
+				});
+			}
+			req.destroy();
+		})().catch(() => { /* the peer may vanish mid-teardown; nothing to report */ });
 	}
 
 	private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
