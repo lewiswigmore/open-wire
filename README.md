@@ -185,7 +185,7 @@ Install from the VS Code Marketplace, or load the `.vsix` yourself. The server s
 If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session — check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings. The examples below use `<your-api-key>` as a placeholder for that value.
 
 ```bash
-export OPENWIRE_API_KEY=<your-api-key>
+export OPENWIRE_API_KEY="<your-api-key>"
 
 # List available models
 curl http://localhost:3030/v1/models \
