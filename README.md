@@ -115,7 +115,7 @@ The VS Code Language Model API has no provider-level JSON mode, so OpenWire enfo
 
 ```bash
 curl http://localhost:3030/v1/chat/completions \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
+  -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<model-id>",
@@ -182,18 +182,18 @@ Vision requests use the standard OpenAI content-part shape:
 
 Install from the VS Code Marketplace, or load the `.vsix` yourself. The server starts on `http://127.0.0.1:3030` as soon as VS Code loads the extension.
 
-If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session — check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings.
+If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session — check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings. The examples below use `<your-api-key>` as a placeholder for that value.
 
 ```bash
-export OPENWIRE_API_KEY="<key from the OpenWire output channel, or your own configured value>"
+export OPENWIRE_API_KEY="<your-api-key>"
 
 # List available models
 curl http://localhost:3030/v1/models \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY"
+  -H "Authorization: Bearer <your-api-key>"
 
 # Chat completion
 curl http://localhost:3030/v1/chat/completions \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
+  -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<model-id>",
@@ -202,7 +202,7 @@ curl http://localhost:3030/v1/chat/completions \
 
 # Streaming
 curl http://localhost:3030/v1/chat/completions \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
+  -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<model-id>",
@@ -262,7 +262,7 @@ OpenWire works as a model provider for [OpenClaw](https://openclaw.ai) agents. R
     "providers": {
       "copilot-proxy": {
         "baseUrl": "http://localhost:3030/v1",
-        "apiKey": "<key from the OpenWire output channel, or your own configured value>",
+        "apiKey": "<your-api-key>",
         "api": "openai-completions",
         "models": [
           {
