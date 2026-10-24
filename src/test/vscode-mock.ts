@@ -139,6 +139,9 @@ interface MockState {
 	requests: RecordedRequest[];
 	responseDelayMs: number;
 	failNext: boolean;
+	discoveryBehaviour: 'ok' | 'hang' | 'fail';
+	discoveryError: unknown;
+	discoveryCalls: number;
 }
 
 const state: MockState = {
@@ -148,7 +151,17 @@ const state: MockState = {
 	requests: [],
 	responseDelayMs: 0,
 	failNext: false,
+	discoveryBehaviour: 'ok',
+	discoveryError: undefined,
+	discoveryCalls: 0,
 };
+
+/** Lines written to the mock output channel, for asserting diagnostics. */
+const outputLines: string[] = [];
+
+export function recordedOutput(): string[] {
+	return outputLines;
+}
 
 /** Reset every piece of mock state between tests. */
 export function resetMock(config: Record<string, unknown> = {}): void {
@@ -158,6 +171,10 @@ export function resetMock(config: Record<string, unknown> = {}): void {
 	state.requests = [];
 	state.responseDelayMs = 0;
 	state.failNext = false;
+	state.discoveryBehaviour = 'ok';
+	state.discoveryError = undefined;
+	state.discoveryCalls = 0;
+	outputLines.length = 0;
 	enableDataPart(true);
 }
 
@@ -187,6 +204,21 @@ export function failNextRequest(): void {
 	state.failNext = true;
 }
 
+/** Make vscode.lm.selectChatModels() return a promise that never settles (#45). */
+export function hangDiscovery(): void {
+	state.discoveryBehaviour = 'hang';
+}
+
+/** Make vscode.lm.selectChatModels() throw. */
+export function failDiscovery(err?: Error): void {
+	state.discoveryBehaviour = 'fail';
+	state.discoveryError = err;
+}
+
+export function discoveryCallCount(): number {
+	return state.discoveryCalls;
+}
+
 // ── namespaces ────────────────────────────────────────────
 
 export const workspace = {
@@ -204,6 +236,9 @@ export const workspace = {
 
 export const lm = {
 	async selectChatModels(): Promise<FakeModel[]> {
+		state.discoveryCalls++;
+		if (state.discoveryBehaviour === 'hang') return new Promise<FakeModel[]>(() => { });
+		if (state.discoveryBehaviour === 'fail') throw state.discoveryError ?? new Error('discovery failed');
 		return state.models;
 	},
 };
@@ -216,7 +251,7 @@ export const extensions = {
 
 export const window = {
 	createOutputChannel(_name: string) {
-		return { appendLine: (_m: string) => { }, dispose: () => { } };
+		return { appendLine: (m: string) => { outputLines.push(m); }, dispose: () => { } };
 	},
 	createStatusBarItem(_align?: unknown, _priority?: number) {
 		return {
