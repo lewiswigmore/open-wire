@@ -39,6 +39,24 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 - **Tight CORS defaults.** Browser requests are limited to loopback origins.
 - **Zero dependencies.** Node's built-in HTTP server, no Express.
 
+## Official API vs. reverse-engineered proxies
+
+OpenWire is a thin adapter over VS Code's official Language Model API
+(`vscode.lm.selectChatModels`). VS Code handles authentication, entitlements and
+the provider plumbing, and OpenWire can only offer what that supported surface
+exposes, which is why `GET /v1/capabilities` reports the honest split instead
+of promising more.
+
+The alternative is a reverse-engineered proxy that replays Copilot's private
+HTTP API from outside VS Code, such as
+[ericc-ch/copilot-api](https://github.com/ericc-ch/copilot-api). That can reach
+the same models without an extension host, but it tracks an undocumented target
+that changes without notice, carries account-suspension risk (its own README
+warns about GitHub's abuse-detection systems), and goes dormant when its
+maintainers stop chasing the internals: copilot-api has not had a push since
+November 2025. OpenWire takes the opposite trade: only the models VS Code
+registers, on a surface Microsoft keeps working.
+
 ## Models
 
 Any model registered with VS Code's Language Model API is exposed automatically. In practice that means:
@@ -115,7 +133,7 @@ The VS Code Language Model API has no provider-level JSON mode, so OpenWire enfo
 
 ```bash
 curl http://localhost:3030/v1/chat/completions \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
+  -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<model-id>",
@@ -182,18 +200,18 @@ Vision requests use the standard OpenAI content-part shape:
 
 Install from the VS Code Marketplace, or load the `.vsix` yourself. The server starts on `http://127.0.0.1:3030` as soon as VS Code loads the extension.
 
-If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session — check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings.
+If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session — check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings. The examples below use `<your-api-key>` as a placeholder for that value.
 
 ```bash
-export OPENWIRE_API_KEY="<key from the OpenWire output channel, or your own configured value>"
+export OPENWIRE_API_KEY="<your-api-key>"
 
 # List available models
 curl http://localhost:3030/v1/models \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY"
+  -H "Authorization: Bearer <your-api-key>"
 
 # Chat completion
 curl http://localhost:3030/v1/chat/completions \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
+  -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<model-id>",
@@ -202,7 +220,7 @@ curl http://localhost:3030/v1/chat/completions \
 
 # Streaming
 curl http://localhost:3030/v1/chat/completions \
-  -H "Authorization: Bearer $OPENWIRE_API_KEY" \
+  -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<model-id>",
@@ -262,7 +280,7 @@ OpenWire works as a model provider for [OpenClaw](https://openclaw.ai) agents. R
     "providers": {
       "copilot-proxy": {
         "baseUrl": "http://localhost:3030/v1",
-        "apiKey": "<key from the OpenWire output channel, or your own configured value>",
+        "apiKey": "<your-api-key>",
         "api": "openai-completions",
         "models": [
           {
