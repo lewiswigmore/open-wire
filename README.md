@@ -350,12 +350,15 @@ Development Host window to pick up a rebuild.
 | `npm run test` | Runs the Vitest suite |
 | `npm run build` | Bundles `src/` into `dist/extension.js` |
 | `npm run package` | Builds a production bundle and writes a local `.vsix` |
+| `npm run check:engines` | Fails unless `@types/vscode` and `engines.vscode` share a minor version |
 
 `npm run package` fails when `@types/vscode` is newer than `engines.vscode`,
 so raising the types version means raising the engine floor too. The reverse
-is not checked. Raising `engines.vscode` on its own packages and publishes
-without complaint, which leaves the types older than the VS Code version the
-extension now claims to support, so bump `@types/vscode` to match by hand.
+is not checked: raising `engines.vscode` on its own packages and publishes
+without complaint, leaving the types older than the VS Code version the
+extension claims to support. `npm run check:engines` catches both directions,
+and CI runs it on every push and pull request, so raise the two versions
+together.
 
 ## Releasing
 
