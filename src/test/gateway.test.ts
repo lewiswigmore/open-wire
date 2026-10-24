@@ -3,12 +3,22 @@ import { request as httpRequest } from 'http';
 import type { AddressInfo } from 'net';
 import { Gateway } from '../server/gateway';
 import {
+	DISCOVERY_TIMEOUT_MS,
+	expireDiscoveryCache,
+	resetDiscoveryCache,
+	setDiscoveryTimeoutMs,
+} from '../models/discovery';
+import {
 	LanguageModelTextPart,
 	LanguageModelToolCallPart,
+	discoveryCallCount,
 	enableDataPart,
+	failDiscovery,
 	failNextRequest,
+	hangDiscovery,
 	queueText,
 	queueTurns,
+	recordedOutput,
 	recordedRequests,
 	resetMock,
 	setResponseDelay,
@@ -763,5 +773,76 @@ describe('legacy completions', () => {
 		expect(frames.every(f => f.object === 'text_completion')).toBe(true);
 		expect(frames.map(f => f.choices[0].text).join('')).toBe('onetwo');
 		expect(body.endsWith('data: [DONE]\n\n')).toBe(true);
+	});
+});
+
+// #45: vscode.lm.selectChatModels() can never settle on some VS Code builds,
+// and discovery is the first await in every /v1/* handler.
+describe('model discovery guard', () => {
+	beforeEach(async () => {
+		await startGateway();
+		resetDiscoveryCache();
+		setDiscoveryTimeoutMs(150);
+	});
+
+	afterEach(() => {
+		setDiscoveryTimeoutMs(DISCOVERY_TIMEOUT_MS);
+		resetDiscoveryCache();
+	});
+
+	it('answers 503 instead of hanging when selectChatModels never resolves', async () => {
+		hangDiscovery();
+		const started = Date.now();
+		const res = await get('/v1/models');
+		const elapsedMs = Date.now() - started;
+
+		expect(res.status).toBe(503);
+		expect((await res.json() as any).error.message).toMatch(/Model discovery timed out/);
+		expect(elapsedMs).toBeLessThan(5_000);
+		expect(recordedOutput().join('\n')).toMatch(/did not resolve within 150ms/);
+	});
+
+	it('shares one discovery call across concurrent requests', async () => {
+		hangDiscovery();
+		const results = await Promise.all([get('/v1/models'), get('/v1/models'), get('/v1/models')]);
+
+		expect(results.map(r => r.status)).toEqual([503, 503, 503]);
+		expect(discoveryCallCount()).toBe(1);
+	});
+
+	it('falls back to the last known model list when discovery wedges later', async () => {
+		const warm = ((await (await get('/v1/models')).json()) as any);
+		expect(warm.data).toHaveLength(1);
+
+		expireDiscoveryCache();
+		hangDiscovery();
+		const res = await get('/v1/models');
+
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as any).data[0].id).toBe('test-model');
+		expect(recordedOutput().join('\n')).toMatch(/cached model/);
+	});
+
+	it('fails fast on later requests while discovery is wedged with no cache', async () => {
+		hangDiscovery();
+		expect((await get('/v1/models')).status).toBe(503);
+		expect(discoveryCallCount()).toBe(1);
+
+		const started = Date.now();
+		const res = await get('/v1/models');
+
+		expect(res.status).toBe(503);
+		// The cooldown must skip the wedged API entirely, not queue behind it.
+		expect(discoveryCallCount()).toBe(1);
+		expect(Date.now() - started).toBeLessThan(1_000);
+	});
+
+	it('surfaces discovery failures as a 500', async () => {
+		failDiscovery(new Error('provider exploded'));
+		const res = await get('/v1/models');
+
+		expect(res.status).toBe(500);
+		expect((await res.json() as any).error.message).toMatch(/provider exploded/);
+		expect(recordedOutput().join('\n')).toMatch(/selectChatModels\(\) failed/);
 	});
 });

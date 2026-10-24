@@ -4,7 +4,7 @@ import type { AddressInfo } from 'net';
 import * as vscode from 'vscode';
 import { loadConfig, type ServerConfig } from './config';
 import { isOriginAllowed } from './security';
-import { listModels } from '../models';
+import { listModels, setDiscoveryLogger } from '../models';
 import { processChatCompletion, processStreamingChatCompletion, supportsImageInput, writeSseError } from '../routes/chat';
 import { SUPPORTED_IMAGE_MIME_TYPES } from '../routes/content';
 import { legacyStreamResponse, toLegacyCompletion } from '../routes/legacy';
@@ -40,6 +40,10 @@ export class Gateway implements vscode.Disposable {
 	async start(): Promise<void> {
 		await this.stop();
 		this.config = loadConfig();
+
+		// Every /v1/* request starts with model discovery, so surface its
+		// timing here: a wedged discovery call is otherwise invisible.
+		setDiscoveryLogger(message => this.log(message));
 
 		this.server = createServer((req, res) => {
 			void this.handleRequest(req, res);
