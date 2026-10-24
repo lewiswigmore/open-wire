@@ -39,6 +39,24 @@ One extension. Every model VS Code can see. Standard API. Built for agents.
 - **Tight CORS defaults.** Browser requests are limited to loopback origins.
 - **Zero dependencies.** Node's built-in HTTP server, no Express.
 
+## Official API vs. reverse-engineered proxies
+
+OpenWire is a thin adapter over VS Code's official Language Model API
+(`vscode.lm.selectChatModels`). VS Code handles authentication, entitlements and
+the provider plumbing, and OpenWire can only offer what that supported surface
+exposes, which is why `GET /v1/capabilities` reports the honest split instead
+of promising more.
+
+The alternative is a reverse-engineered proxy that replays Copilot's private
+HTTP API from outside VS Code, such as
+[ericc-ch/copilot-api](https://github.com/ericc-ch/copilot-api). That can reach
+the same models without an extension host, but it tracks an undocumented target
+that changes without notice, carries account-suspension risk (its own README
+warns about GitHub's abuse-detection systems), and goes dormant when its
+maintainers stop chasing the internals: copilot-api has not had a push since
+November 2025. OpenWire takes the opposite trade: only the models VS Code
+registers, on a surface Microsoft keeps working.
+
 ## Models
 
 Any model registered with VS Code's Language Model API is exposed automatically. In practice that means:
