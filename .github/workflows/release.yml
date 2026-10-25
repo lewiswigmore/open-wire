@@ -57,3 +57,21 @@ jobs:
         with:
           files: ${{ steps.package.outputs.vsix }}
           generate_release_notes: true
+      # ovsx 1.3.0 declares engines.node >=22, so it runs on its own setup-node
+      # rather than the Node 20 the job builds and packages with.
+      - name: Set up Node 22 for the OpenVSX CLI
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Publish to OpenVSX
+        env:
+          OPENVSX_PAT: ${{ secrets.OPENVSX_PAT }}
+          VSIX_PATH: ${{ steps.package.outputs.vsix }}
+        run: |
+          if [ -z "$OPENVSX_PAT" ]; then
+            echo "OPENVSX_PAT is not set; skipping the OpenVSX publish."
+            echo "To publish to OpenVSX, create the publisher namespace on open-vsx.org,"
+            echo "generate an access token, and add it as the OPENVSX_PAT repository secret."
+            exit 0
+          fi
+          npx --yes ovsx@1.3.0 publish --packagePath "$VSIX_PATH" --skip-duplicate -p "$OPENVSX_PAT"
