@@ -172,6 +172,7 @@
 		"vscode:prepublish": "node esbuild.js --production",
 		"package": "vsce package",
 		"lint": "tsc --noEmit",
+		"check:engines": "node scripts/check-vscode-engines.mjs",
 		"test": "vitest run"
 	},
 	"devDependencies": {
