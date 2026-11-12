@@ -160,7 +160,7 @@ and sent back through the repair retry, so `JSON.parse(content).field` is always
 `maximum`, `minLength`, `maxLength`, `minItems`, `maxItems`. Annotations such as `title`
 and `description` are ignored.
 
-Anything else returns a `400` rather than being accepted and left unenforced — including
+Anything else returns a `400` rather than being accepted and left unenforced, including
 `$ref`, `allOf`, `anyOf`, `oneOf`, `patternProperties`, and the tuple form of `items`.
 
 **Streaming.** Validity cannot be judged mid-stream, so a JSON-mode request with
@@ -200,7 +200,7 @@ Vision requests use the standard OpenAI content-part shape:
 
 Install from the VS Code Marketplace, or load the `.vsix` yourself. The server starts on `http://127.0.0.1:3030` as soon as VS Code loads the extension.
 
-If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session — check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings. The examples below use `<your-api-key>` as a placeholder for that value.
+If you haven't set `openWire.server.apiKey`, OpenWire generates a random key each session, so check the "OpenWire" output channel after the server starts to find it, or set your own fixed key in settings. The examples below use `<your-api-key>` as a placeholder for that value.
 
 ```bash
 export OPENWIRE_API_KEY="<your-api-key>"
