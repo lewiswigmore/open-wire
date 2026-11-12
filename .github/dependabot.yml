@@ -4,6 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # @types/vscode must move in lockstep with engines.vscode (enforced by
+      # scripts/check-vscode-engines.mjs, see #51): a standalone bump breaks
+      # CI, and raising engines.vscode drops older VS Code versions. Bump both
+      # manually and deliberately in one PR instead.
+      - dependency-name: "@types/vscode"
   - package-ecosystem: github-actions
     directory: /
     schedule:
