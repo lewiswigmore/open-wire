@@ -7,6 +7,11 @@ export interface ParsedToolCall {
 	function: { name: string; arguments: string };
 }
 
+/** Fresh OpenAI-style id for tool calls the model did not label itself. */
+export function newToolCallId(): string {
+	return `call_${randomUUID()}`;
+}
+
 export interface ForwardedTool {
 	name: string;
 	description: string;
@@ -33,7 +38,7 @@ export function parseXmlToolCalls(text: string): { cleanedText: string; toolCall
 					params[p[1]] = p[2];
 				}
 				toolCalls.push({
-					id: `call_${randomUUID()}`,
+					id: newToolCallId(),
 					type: 'function',
 					function: { name: inv[1], arguments: JSON.stringify(params) },
 				});

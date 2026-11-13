@@ -1,4 +1,5 @@
 import { badRequest } from './errors';
+import { hasOwn } from '../util/object';
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -225,7 +226,7 @@ export function normalizeMessages(raw: unknown): NormalizedMessage[] {
 		if (!['system', 'user', 'assistant', 'tool'].includes(role)) {
 			throw badRequest(`message at index ${index} has unsupported role "${String(m.role)}"`);
 		}
-		if (!Object.prototype.hasOwnProperty.call(m, 'content') &&
+		if (!hasOwn(m, 'content') &&
 			!(role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0)) {
 			throw badRequest(`message at index ${index} content is required`);
 		}

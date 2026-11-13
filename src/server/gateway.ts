@@ -5,11 +5,12 @@ import * as vscode from 'vscode';
 import { loadConfig, type ServerConfig } from './config';
 import { isOriginAllowed } from './security';
 import { listModels, setDiscoveryLogger } from '../models';
-import { processChatCompletion, processStreamingChatCompletion, supportsImageInput, writeSseError } from '../routes/chat';
+import { processChatCompletion, processStreamingChatCompletion, supportsImageInput } from '../routes/chat';
 import { SUPPORTED_IMAGE_MIME_TYPES } from '../routes/content';
 import { legacyStreamResponse, toLegacyCompletion } from '../routes/legacy';
 import { FORWARDED_PARAMS, HONOURED_PARAMS, UNSUPPORTED_PARAMS } from '../routes/params';
 import { SUPPORTED_SCHEMA_KEYWORDS } from '../routes/schema';
+import { writeSseError } from '../routes/sse';
 
 /** How long a rejected mid-upload request may drain before the socket is torn down. */
 const DRAIN_GRACE_MS = 250;
@@ -261,12 +262,7 @@ export class Gateway implements vscode.Disposable {
 		// Chat completions
 		if (method === 'POST' && path === '/v1/chat/completions') {
 			const body = await this.readBody(req);
-			if (body?.stream === true) {
-				await processStreamingChatCompletion(body, this.config, req, res);
-			} else {
-				const result = await processChatCompletion(body, this.config);
-				this.sendJson(res, 200, result);
-			}
+			await this.sendCompletion(body, req, res, false);
 			return;
 		}
 
@@ -280,21 +276,27 @@ export class Gateway implements vscode.Disposable {
 			};
 			delete chatPayload.prompt;
 
-			if (body?.stream === true) {
-				await processStreamingChatCompletion(
-					chatPayload,
-					this.config,
-					req,
-					legacyStreamResponse(res),
-				);
-			} else {
-				const result = await processChatCompletion(chatPayload, this.config);
-				this.sendJson(res, 200, toLegacyCompletion(result));
-			}
+			await this.sendCompletion(chatPayload, req, res, true);
 			return;
 		}
 
 		this.sendError(res, 404, `Unknown endpoint: ${method} ${path}`);
+	}
+
+	/** Shared stream/non-stream dispatch behind the chat and legacy endpoints. */
+	private async sendCompletion(
+		payload: any,
+		req: IncomingMessage,
+		res: ServerResponse,
+		legacy: boolean,
+	): Promise<void> {
+		if (payload?.stream === true) {
+			const target = legacy ? legacyStreamResponse(res) : res;
+			await processStreamingChatCompletion(payload, this.config, req, target);
+		} else {
+			const result = await processChatCompletion(payload, this.config);
+			this.sendJson(res, 200, legacy ? toLegacyCompletion(result) : result);
+		}
 	}
 
 	/** Report what this build honours, so callers never have to probe empirically. */

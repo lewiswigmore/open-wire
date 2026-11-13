@@ -1,5 +1,6 @@
 import { badRequest } from './errors';
-import { assertSchemaSupported, isPlainObject, validateAgainstSchema } from './schema';
+import { isPlainObject } from '../util/object';
+import { assertSchemaSupported, validateAgainstSchema } from './schema';
 
 /**
  * Server-side enforcement of `response_format`.

@@ -23,6 +23,7 @@ import {
 import {
 	assertSingleChoice,
 	buildModelOptions,
+	buildParamReport,
 	classifyParams,
 	wantsStreamUsage,
 	type ParamReport,
@@ -30,10 +31,12 @@ import {
 import {
 	applyToolChoice,
 	mapTools,
+	newToolCallId,
 	parseXmlToolCalls,
 	planToolChoice,
 	type ParsedToolCall,
 } from './tool-calls';
+import { sseChunk, sseDone, writeSseError } from './sse';
 
 export { normalizeMessages };
 export type ChatMessage = NormalizedMessage;
@@ -87,7 +90,7 @@ function toVscodeMessages(msgs: NormalizedMessage[]): vscode.LanguageModelChatMe
 					for (const tc of msg.tool_calls as any[]) {
 						const name = tc.function?.name || tc.name || 'unknown';
 						const rawArgs = tc.function?.arguments ?? tc.arguments;
-						const callId = tc.id || `call_${randomUUID()}`;
+						const callId = tc.id || newToolCallId();
 						let input: object;
 						if (typeof rawArgs === 'string') {
 							try { input = JSON.parse(rawArgs); } catch { input = { _raw: rawArgs }; }
@@ -198,6 +201,15 @@ interface ModelTurn {
 	toolCalls: ParsedToolCall[];
 }
 
+/** Convert a native tool-call stream part into the OpenAI wire shape. */
+function toolCallFromPart(part: vscode.LanguageModelToolCallPart): ParsedToolCall {
+	return {
+		id: part.callId || newToolCallId(),
+		type: 'function',
+		function: { name: part.name, arguments: JSON.stringify(part.input) },
+	};
+}
+
 /** Run one full model turn, collecting text and native tool calls. */
 async function runTurn(
 	lm: vscode.LanguageModelChat,
@@ -213,11 +225,7 @@ async function runTurn(
 		if (part instanceof vscode.LanguageModelTextPart) {
 			content += part.value;
 		} else if (part instanceof vscode.LanguageModelToolCallPart) {
-			toolCalls.push({
-				id: part.callId || `call_${randomUUID()}`,
-				type: 'function',
-				function: { name: part.name, arguments: JSON.stringify(part.input) },
-			});
+			toolCalls.push(toolCallFromPart(part));
 		}
 	}
 
@@ -310,15 +318,8 @@ function messageToText(message: vscode.LanguageModelChatMessage): string {
 
 /** Attach the capability report so callers can see what was ignored. */
 function withParamReport<T extends object>(result: T, report: ParamReport): T {
-	if (report.unsupported.length === 0 && report.unknown.length === 0) return result;
-	return {
-		...result,
-		x_openwire: {
-			unsupported_params: report.unsupported,
-			unknown_params: report.unknown,
-			note: 'These fields were accepted but had no effect. Enable openWire.server.strictParams to reject them instead.',
-		},
-	};
+	const payload = buildParamReport(report);
+	return payload ? { ...result, x_openwire: payload } : result;
 }
 
 /** Non-streaming chat completion */
@@ -360,21 +361,57 @@ export async function processChatCompletion(
 
 // ── streaming ─────────────────────────────────────────────
 
-function sseChunk(res: ServerResponse, payload: object): void {
-	if (!res.writableEnded) res.write(`data: ${JSON.stringify(payload)}\n\n`);
+/** Emit one assistant content delta; the first delta carries the role. */
+function writeContentDelta(
+	res: ServerResponse,
+	base: object,
+	content: string,
+	includeRole: boolean,
+): void {
+	sseChunk(res, {
+		...base,
+		choices: [{
+			index: 0,
+			delta: {
+				...(includeRole ? { role: 'assistant' as const } : {}),
+				content,
+			},
+			finish_reason: null,
+		}],
+	});
 }
 
-function sseDone(res: ServerResponse): void {
-	if (!res.writableEnded) res.write('data: [DONE]\n\n');
+/** Emit one tool-call delta; `index` positions the call within the stream. */
+function writeToolCallDelta(
+	res: ServerResponse,
+	base: object,
+	index: number,
+	call: ParsedToolCall,
+	includeRole: boolean,
+): void {
+	sseChunk(res, {
+		...base,
+		choices: [{
+			index: 0,
+			delta: {
+				...(includeRole ? { role: 'assistant' as const } : {}),
+				tool_calls: [{ index, id: call.id, type: 'function', function: call.function }],
+			},
+			finish_reason: null,
+		}],
+	});
 }
 
-/**
- * Emit an error inside an already-open SSE stream, then terminate it cleanly.
- * Writing a bare JSON body here would corrupt the event stream.
- */
-export function writeSseError(res: ServerResponse, message: string, code?: number): void {
-	sseChunk(res, { error: { message, type: 'server_error', ...(code ? { code } : {}) } });
-	sseDone(res);
+/** Close the choice with the reason the stream stopped. */
+function writeFinishChunk(
+	res: ServerResponse,
+	base: object,
+	finishReason: 'stop' | 'tool_calls',
+): void {
+	sseChunk(res, {
+		...base,
+		choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+	});
 }
 
 /** Streaming chat completion via SSE */
@@ -411,17 +448,9 @@ export async function processStreamingChatCompletion(
 
 	// Mirror the non-streaming x_openwire report. Without this, unsupported
 	// params would be silent no-ops again whenever stream: true.
-	const report = prepared.report;
-	if (report.unsupported.length > 0 || report.unknown.length > 0) {
-		sseChunk(res, {
-			...base,
-			choices: [],
-			x_openwire: {
-				unsupported_params: report.unsupported,
-				unknown_params: report.unknown,
-				note: 'These fields were accepted but had no effect. Enable openWire.server.strictParams to reject them instead.',
-			},
-		});
+	const paramReport = buildParamReport(prepared.report);
+	if (paramReport) {
+		sseChunk(res, { ...base, choices: [], x_openwire: paramReport });
 	}
 
 	try {
@@ -436,33 +465,13 @@ export async function processStreamingChatCompletion(
 
 			if (hasTools) {
 				turn.toolCalls.forEach((tc, i) => {
-					sseChunk(res, {
-						...base,
-						choices: [{
-							index: 0,
-							delta: {
-								...(i === 0 ? { role: 'assistant' as const } : {}),
-								tool_calls: [{ index: i, id: tc.id, type: 'function', function: tc.function }],
-							},
-							finish_reason: null,
-						}],
-					});
+					writeToolCallDelta(res, base, i, tc, i === 0);
 				});
 			} else {
-				sseChunk(res, {
-					...base,
-					choices: [{
-						index: 0,
-						delta: { role: 'assistant' as const, content: turn.content },
-						finish_reason: null,
-					}],
-				});
+				writeContentDelta(res, base, turn.content, true);
 			}
 
-			sseChunk(res, {
-				...base,
-				choices: [{ index: 0, delta: {}, finish_reason: hasTools ? 'tool_calls' : 'stop' }],
-			});
+			writeFinishChunk(res, base, hasTools ? 'tool_calls' : 'stop');
 		} else {
 			const response = await prepared.lm.sendRequest(
 				toVscodeMessages(prepared.messages),
@@ -479,46 +488,18 @@ export async function processStreamingChatCompletion(
 
 				if (part instanceof vscode.LanguageModelTextPart) {
 					completionText += part.value;
-					sseChunk(res, {
-						...base,
-						choices: [{
-							index: 0,
-							delta: {
-								...(isFirstDelta ? { role: 'assistant' as const } : {}),
-								content: part.value,
-							},
-							finish_reason: null,
-						}],
-					});
+					writeContentDelta(res, base, part.value, isFirstDelta);
 					isFirstDelta = false;
 				} else if (part instanceof vscode.LanguageModelToolCallPart) {
 					hasToolCalls = true;
-					sseChunk(res, {
-						...base,
-						choices: [{
-							index: 0,
-							delta: {
-								...(isFirstDelta ? { role: 'assistant' as const } : {}),
-								tool_calls: [{
-									index: toolCallIndex++,
-									id: part.callId || `call_${randomUUID()}`,
-									type: 'function',
-									function: { name: part.name, arguments: JSON.stringify(part.input) },
-								}],
-							},
-							finish_reason: null,
-						}],
-					});
+					writeToolCallDelta(res, base, toolCallIndex++, toolCallFromPart(part), isFirstDelta);
 					isFirstDelta = false;
 				}
 			}
 
 			if (cts.token.isCancellationRequested) return;
 
-			sseChunk(res, {
-				...base,
-				choices: [{ index: 0, delta: {}, finish_reason: hasToolCalls ? 'tool_calls' : 'stop' }],
-			});
+			writeFinishChunk(res, base, hasToolCalls ? 'tool_calls' : 'stop');
 		}
 
 		if (includeUsage) {
