@@ -105,7 +105,7 @@ function findMalformedKeywords(schema: Record<string, any>, path = 'schema'): st
 	const at = (keyword: string) => `${path}.${keyword}`;
 
 	if (schema.type !== undefined) {
-		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+		const types = declaredTypes(schema);
 		if (types.length === 0 || types.some(t => typeof t !== 'string' || !VALID_TYPES.has(t))) {
 			errors.push(`${at('type')} must be a supported type or non-empty array of supported types`);
 		} else if (new Set(types).size !== types.length) {
@@ -181,7 +181,7 @@ export function validateAgainstSchema(value: unknown, schema: unknown, path = 'r
 	const errors: string[] = [];
 
 	if (schema.type !== undefined) {
-		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+		const types = declaredTypes(schema);
 		for (const t of types) {
 			if (typeof t !== 'string' || !VALID_TYPES.has(t)) {
 				return [`${path}: schema declares unknown type "${String(t)}"`];
@@ -269,6 +269,11 @@ export function validateAgainstSchema(value: unknown, schema: unknown, path = 'r
 }
 
 // ── helpers ───────────────────────────────────────────────
+
+/** The declared `type` values, accepting both the single and the array form. */
+function declaredTypes(schema: Record<string, any>): unknown[] {
+	return Array.isArray(schema.type) ? schema.type : [schema.type];
+}
 
 /**
  * Own-property check. Plain `in` walks the prototype chain, so a schema

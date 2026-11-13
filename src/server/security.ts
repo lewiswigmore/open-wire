@@ -17,15 +17,17 @@ function getGeneratedApiKey(): string {
 
 export function normalizeApiKey(rawApiKey: string | undefined): string {
 	const value = rawApiKey?.trim() ?? '';
-	if (value.length === 0 || value === DEFAULT_API_KEY) {
-		return getGeneratedApiKey();
-	}
-	return value;
+	return isUnconfigured(value) ? getGeneratedApiKey() : value;
+}
+
+/** True when the configured value is empty or still the published placeholder. */
+function isUnconfigured(rawApiKey: string | undefined): boolean {
+	const value = rawApiKey?.trim() ?? '';
+	return value.length === 0 || value === DEFAULT_API_KEY;
 }
 
 export function isApiKeyUnconfigured(rawApiKey: string | undefined): boolean {
-	const value = rawApiKey?.trim() ?? '';
-	return value.length === 0 || value === DEFAULT_API_KEY;
+	return isUnconfigured(rawApiKey);
 }
 
 export function normalizeCorsAllowedOrigins(rawOrigins: unknown): string[] {

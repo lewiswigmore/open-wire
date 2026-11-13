@@ -18,6 +18,27 @@ export type ToolChoicePlan =
 	| { mode: 'auto' }
 	| { mode: 'required'; only?: string };
 
+/** A call id for models that emit a tool call without one. */
+export function nextToolCallId(): string {
+	return `call_${randomUUID()}`;
+}
+
+/**
+ * Serialise one model tool call into the OpenAI shape. Arguments are always a
+ * JSON string on the wire, even when the model produced an object.
+ */
+export function toParsedToolCall(
+	callId: string | undefined,
+	name: string,
+	input: unknown,
+): ParsedToolCall {
+	return {
+		id: callId || nextToolCallId(),
+		type: 'function',
+		function: { name, arguments: JSON.stringify(input) },
+	};
+}
+
 /**
  * Parse XML-style function calls out of model text output.
  * Some models emit this shape instead of a native tool call part.
@@ -32,11 +53,7 @@ export function parseXmlToolCalls(text: string): { cleanedText: string; toolCall
 				for (const p of inv[2].matchAll(/<parameter\s+name="([^"]+)">([\s\S]*?)<\/parameter>/g)) {
 					params[p[1]] = p[2];
 				}
-				toolCalls.push({
-					id: `call_${randomUUID()}`,
-					type: 'function',
-					function: { name: inv[1], arguments: JSON.stringify(params) },
-				});
+				toolCalls.push(toParsedToolCall(undefined, inv[1], params));
 			}
 			return '';
 		},

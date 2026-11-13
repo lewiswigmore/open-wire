@@ -321,12 +321,14 @@ src/
   routes/
     chat.ts             vscode binding + orchestration
     content.ts          message/content normalisation, image parts
+    envelope.ts         response ids, chunk framing, error bodies
     params.ts           sampling params, capability classification
     json-mode.ts        response_format enforcement
     schema.ts           JSON Schema subset validator
     tool-calls.ts       tool mapping, tool_choice, XML fallback
     legacy.ts           text_completion shape for /v1/completions
     errors.ts           RequestError with an HTTP status
+    sse.ts              server-sent event framing
   server/
     config.ts           settings loader
     gateway.ts          HTTP server, routing, middleware

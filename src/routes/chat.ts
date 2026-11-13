@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import * as vscode from 'vscode';
 import { discoverModels, findModel, resolveModelId } from '../models';
@@ -11,6 +10,14 @@ import {
 	type ContentPart,
 	type NormalizedMessage,
 } from './content';
+import {
+	chunkChoice,
+	chunkEnvelope,
+	completionId,
+	paramReportBlock,
+	unixSeconds,
+	type ChunkEnvelope,
+} from './envelope';
 import { RequestError, badRequest } from './errors';
 import {
 	buildJsonInstruction,
@@ -27,11 +34,14 @@ import {
 	wantsStreamUsage,
 	type ParamReport,
 } from './params';
+import { writeSseComment, writeSseDone, writeSseError, writeSseFrame } from './sse';
 import {
 	applyToolChoice,
 	mapTools,
+	nextToolCallId,
 	parseXmlToolCalls,
 	planToolChoice,
+	toParsedToolCall,
 	type ParsedToolCall,
 } from './tool-calls';
 
@@ -87,7 +97,7 @@ function toVscodeMessages(msgs: NormalizedMessage[]): vscode.LanguageModelChatMe
 					for (const tc of msg.tool_calls as any[]) {
 						const name = tc.function?.name || tc.name || 'unknown';
 						const rawArgs = tc.function?.arguments ?? tc.arguments;
-						const callId = tc.id || `call_${randomUUID()}`;
+						const callId = tc.id || nextToolCallId();
 						let input: object;
 						if (typeof rawArgs === 'string') {
 							try { input = JSON.parse(rawArgs); } catch { input = { _raw: rawArgs }; }
@@ -126,6 +136,8 @@ interface PreparedRequest {
 	modelId: string;
 	lm: vscode.LanguageModelChat;
 	messages: NormalizedMessage[];
+	/** The same conversation in the VS Code representation, built once. */
+	vscodeMessages: vscode.LanguageModelChatMessage[];
 	options: vscode.LanguageModelChatRequestOptions;
 	format: ResponseFormat;
 	report: ParamReport;
@@ -190,7 +202,15 @@ async function prepareRequest(payload: any, config: ServerConfig): Promise<Prepa
 			: vscode.LanguageModelChatToolMode.Auto;
 	}
 
-	return { modelId, lm, messages, options, format, report };
+	return {
+		modelId,
+		lm,
+		messages,
+		vscodeMessages: toVscodeMessages(messages),
+		options,
+		format,
+		report,
+	};
 }
 
 interface ModelTurn {
@@ -213,11 +233,7 @@ async function runTurn(
 		if (part instanceof vscode.LanguageModelTextPart) {
 			content += part.value;
 		} else if (part instanceof vscode.LanguageModelToolCallPart) {
-			toolCalls.push({
-				id: part.callId || `call_${randomUUID()}`,
-				type: 'function',
-				function: { name: part.name, arguments: JSON.stringify(part.input) },
-			});
+			toolCalls.push(toParsedToolCall(part.callId, part.name, part.input));
 		}
 	}
 
@@ -241,7 +257,7 @@ async function runWithJsonEnforcement(
 	token: vscode.CancellationToken,
 ): Promise<ModelTurn> {
 	const { lm, options, format } = prepared;
-	let conversation = toVscodeMessages(prepared.messages);
+	let conversation = prepared.vscodeMessages;
 	let lastReason = 'unknown';
 	let lastOutput = '';
 
@@ -310,15 +326,9 @@ function messageToText(message: vscode.LanguageModelChatMessage): string {
 
 /** Attach the capability report so callers can see what was ignored. */
 function withParamReport<T extends object>(result: T, report: ParamReport): T {
-	if (report.unsupported.length === 0 && report.unknown.length === 0) return result;
-	return {
-		...result,
-		x_openwire: {
-			unsupported_params: report.unsupported,
-			unknown_params: report.unknown,
-			note: 'These fields were accepted but had no effect. Enable openWire.server.strictParams to reject them instead.',
-		},
-	};
+	const block = paramReportBlock(report);
+	if (!block) return result;
+	return { ...result, x_openwire: block };
 }
 
 /** Non-streaming chat completion */
@@ -331,14 +341,13 @@ export async function processChatCompletion(
 
 	try {
 		const turn = await runWithJsonEnforcement(prepared, config, cts.token);
-		const lmMessages = toVscodeMessages(prepared.messages);
-		const usage = await countUsage(prepared.lm, lmMessages, turn.content, cts.token);
+		const usage = await countUsage(prepared.lm, prepared.vscodeMessages, turn.content, cts.token);
 
 		const hasTools = turn.toolCalls.length > 0;
 		const result = {
-			id: `chatcmpl-${randomUUID()}`,
+			id: completionId(),
 			object: 'chat.completion',
-			created: Math.floor(Date.now() / 1000),
+			created: unixSeconds(),
 			model: prepared.modelId,
 			choices: [{
 				index: 0,
@@ -360,21 +369,17 @@ export async function processChatCompletion(
 
 // ── streaming ─────────────────────────────────────────────
 
-function sseChunk(res: ServerResponse, payload: object): void {
-	if (!res.writableEnded) res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-function sseDone(res: ServerResponse): void {
-	if (!res.writableEnded) res.write('data: [DONE]\n\n');
-}
-
-/**
- * Emit an error inside an already-open SSE stream, then terminate it cleanly.
- * Writing a bare JSON body here would corrupt the event stream.
- */
-export function writeSseError(res: ServerResponse, message: string, code?: number): void {
-	sseChunk(res, { error: { message, type: 'server_error', ...(code ? { code } : {}) } });
-	sseDone(res);
+/** Emit one streamed delta, tagging the assistant role on the first frame only. */
+function writeDelta(
+	res: ServerResponse,
+	base: ChunkEnvelope,
+	isFirstDelta: boolean,
+	delta: Record<string, unknown>,
+): void {
+	writeSseFrame(res, {
+		...base,
+		choices: [chunkChoice(isFirstDelta ? { role: 'assistant', ...delta } : delta)],
+	});
 }
 
 /** Streaming chat completion via SSE */
@@ -389,39 +394,27 @@ export async function processStreamingChatCompletion(
 	const prepared = await prepareRequest(payload, config);
 	const includeUsage = wantsStreamUsage(payload);
 
-	const requestId = `chatcmpl-${randomUUID()}`;
-	const created = Math.floor(Date.now() / 1000);
+	const base = chunkEnvelope(prepared.modelId);
 
 	res.writeHead(200, {
 		'Content-Type': 'text/event-stream',
 		'Cache-Control': 'no-cache',
 		'Connection': 'keep-alive',
-		'X-Request-Id': requestId,
+		'X-Request-Id': base.id,
 	});
 
 	const cts = new vscode.CancellationTokenSource();
 	req.on('close', () => cts.cancel());
 
-	const heartbeat = setInterval(() => {
-		if (!res.writableEnded) res.write(': ping\n\n');
-	}, 15_000);
+	const heartbeat = setInterval(() => writeSseComment(res, 'ping'), 15_000);
 
-	const base = { id: requestId, object: 'chat.completion.chunk', created, model: prepared.modelId };
 	let completionText = '';
 
 	// Mirror the non-streaming x_openwire report. Without this, unsupported
 	// params would be silent no-ops again whenever stream: true.
-	const report = prepared.report;
-	if (report.unsupported.length > 0 || report.unknown.length > 0) {
-		sseChunk(res, {
-			...base,
-			choices: [],
-			x_openwire: {
-				unsupported_params: report.unsupported,
-				unknown_params: report.unknown,
-				note: 'These fields were accepted but had no effect. Enable openWire.server.strictParams to reject them instead.',
-			},
-		});
+	const report = paramReportBlock(prepared.report);
+	if (report) {
+		writeSseFrame(res, { ...base, choices: [], x_openwire: report });
 	}
 
 	try {
@@ -436,36 +429,21 @@ export async function processStreamingChatCompletion(
 
 			if (hasTools) {
 				turn.toolCalls.forEach((tc, i) => {
-					sseChunk(res, {
-						...base,
-						choices: [{
-							index: 0,
-							delta: {
-								...(i === 0 ? { role: 'assistant' as const } : {}),
-								tool_calls: [{ index: i, id: tc.id, type: 'function', function: tc.function }],
-							},
-							finish_reason: null,
-						}],
+					writeDelta(res, base, i === 0, {
+						tool_calls: [{ index: i, id: tc.id, type: 'function', function: tc.function }],
 					});
 				});
 			} else {
-				sseChunk(res, {
-					...base,
-					choices: [{
-						index: 0,
-						delta: { role: 'assistant' as const, content: turn.content },
-						finish_reason: null,
-					}],
-				});
+				writeDelta(res, base, true, { content: turn.content });
 			}
 
-			sseChunk(res, {
+			writeSseFrame(res, {
 				...base,
-				choices: [{ index: 0, delta: {}, finish_reason: hasTools ? 'tool_calls' : 'stop' }],
+				choices: [chunkChoice({}, hasTools ? 'tool_calls' : 'stop')],
 			});
 		} else {
 			const response = await prepared.lm.sendRequest(
-				toVscodeMessages(prepared.messages),
+				prepared.vscodeMessages,
 				prepared.options,
 				cts.token,
 			);
@@ -479,35 +457,12 @@ export async function processStreamingChatCompletion(
 
 				if (part instanceof vscode.LanguageModelTextPart) {
 					completionText += part.value;
-					sseChunk(res, {
-						...base,
-						choices: [{
-							index: 0,
-							delta: {
-								...(isFirstDelta ? { role: 'assistant' as const } : {}),
-								content: part.value,
-							},
-							finish_reason: null,
-						}],
-					});
+					writeDelta(res, base, isFirstDelta, { content: part.value });
 					isFirstDelta = false;
 				} else if (part instanceof vscode.LanguageModelToolCallPart) {
 					hasToolCalls = true;
-					sseChunk(res, {
-						...base,
-						choices: [{
-							index: 0,
-							delta: {
-								...(isFirstDelta ? { role: 'assistant' as const } : {}),
-								tool_calls: [{
-									index: toolCallIndex++,
-									id: part.callId || `call_${randomUUID()}`,
-									type: 'function',
-									function: { name: part.name, arguments: JSON.stringify(part.input) },
-								}],
-							},
-							finish_reason: null,
-						}],
+					writeDelta(res, base, isFirstDelta, {
+						tool_calls: [{ index: toolCallIndex++, ...toParsedToolCall(part.callId, part.name, part.input) }],
 					});
 					isFirstDelta = false;
 				}
@@ -515,23 +470,23 @@ export async function processStreamingChatCompletion(
 
 			if (cts.token.isCancellationRequested) return;
 
-			sseChunk(res, {
+			writeSseFrame(res, {
 				...base,
-				choices: [{ index: 0, delta: {}, finish_reason: hasToolCalls ? 'tool_calls' : 'stop' }],
+				choices: [chunkChoice({}, hasToolCalls ? 'tool_calls' : 'stop')],
 			});
 		}
 
 		if (includeUsage) {
 			const usage = await countUsage(
 				prepared.lm,
-				toVscodeMessages(prepared.messages),
+				prepared.vscodeMessages,
 				completionText,
 				cts.token,
 			);
-			sseChunk(res, { ...base, choices: [], usage });
+			writeSseFrame(res, { ...base, choices: [], usage });
 		}
 
-		sseDone(res);
+		writeSseDone(res);
 	} catch (err: any) {
 		if (!cts.token.isCancellationRequested) {
 			writeSseError(res, err?.message || 'Internal error', err?.status);
