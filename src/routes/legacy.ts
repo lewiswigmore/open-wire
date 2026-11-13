@@ -6,18 +6,34 @@ import type { ServerResponse } from 'http';
  * still use this endpoint read `choices[].text`, not `choices[].message`.
  */
 
+/**
+ * Map chat choices onto the legacy choice shape: message/delta content
+ * collapses to a text string, and a missing finish_reason falls back to
+ * `stop` for final completions or null for stream chunks.
+ */
+function mapLegacyChoices(
+	choices: any[],
+	pickText: (choice: any) => unknown,
+	fallbackFinish: string | null,
+): any[] {
+	return choices.map((c: any) => {
+		const raw = pickText(c);
+		return {
+			index: c?.index ?? 0,
+			text: typeof raw === 'string' ? raw : '',
+			logprobs: null,
+			finish_reason: c?.finish_reason ?? fallbackFinish,
+		};
+	});
+}
+
 /** Map a non-streaming chat.completion object onto the legacy shape. */
 export function toLegacyCompletion(result: any): any {
 	const choices = Array.isArray(result?.choices) ? result.choices : [];
 	return {
 		...result,
 		object: 'text_completion',
-		choices: choices.map((c: any) => ({
-			index: c?.index ?? 0,
-			text: typeof c?.message?.content === 'string' ? c.message.content : '',
-			logprobs: null,
-			finish_reason: c?.finish_reason ?? 'stop',
-		})),
+		choices: mapLegacyChoices(choices, c => c?.message?.content, 'stop'),
 	};
 }
 
@@ -27,12 +43,7 @@ export function toLegacyChunk(chunk: any): any {
 	return {
 		...chunk,
 		object: 'text_completion',
-		choices: choices.map((c: any) => ({
-			index: c?.index ?? 0,
-			text: typeof c?.delta?.content === 'string' ? c.delta.content : '',
-			logprobs: null,
-			finish_reason: c?.finish_reason ?? null,
-		})),
+		choices: mapLegacyChoices(choices, c => c?.delta?.content, null),
 	};
 }
 

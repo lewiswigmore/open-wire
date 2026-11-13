@@ -1,4 +1,5 @@
 import { badRequest } from './errors';
+import { hasOwn, isPlainObject } from '../util/object';
 
 /**
  * A deliberately small JSON Schema subset validator.
@@ -270,15 +271,6 @@ export function validateAgainstSchema(value: unknown, schema: unknown, path = 'r
 
 // ── helpers ───────────────────────────────────────────────
 
-/**
- * Own-property check. Plain `in` walks the prototype chain, so a schema
- * property named `constructor` or `toString` would appear to exist on every
- * object and could never be satisfied.
- */
-function hasOwn(value: Record<string, any>, key: string): boolean {
-	return Object.prototype.hasOwnProperty.call(value, key);
-}
-
 function joinPath(base: string, segment: string): string {
 	return base ? `${base}.${segment}` : segment;
 }
@@ -300,10 +292,6 @@ function describeType(value: unknown): string {
 	if (value === null) return 'null';
 	if (Array.isArray(value)) return 'array';
 	return typeof value;
-}
-
-export function isPlainObject(value: unknown): value is Record<string, any> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {

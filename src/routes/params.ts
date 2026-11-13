@@ -68,6 +68,29 @@ export interface ParamReport {
 	unknown: string[];
 }
 
+export interface ParamReportPayload {
+	unsupported_params: string[];
+	unknown_params: string[];
+	note: string;
+}
+
+const PARAM_REPORT_NOTE =
+	'These fields were accepted but had no effect. Enable openWire.server.strictParams to reject them instead.';
+
+/**
+ * Shape the x_openwire capability report, or return null when every parameter
+ * was honoured. Both the non-streaming body and the streaming side-channel
+ * attach this, so unsupported params are never silent no-ops.
+ */
+export function buildParamReport(report: ParamReport): ParamReportPayload | null {
+	if (report.unsupported.length === 0 && report.unknown.length === 0) return null;
+	return {
+		unsupported_params: report.unsupported,
+		unknown_params: report.unknown,
+		note: PARAM_REPORT_NOTE,
+	};
+}
+
 /** Classify a request body so callers can be told what was actually applied. */
 export function classifyParams(payload: unknown): ParamReport {
 	const unsupported: string[] = [];

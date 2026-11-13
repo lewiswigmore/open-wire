@@ -17,10 +17,7 @@ function getGeneratedApiKey(): string {
 
 export function normalizeApiKey(rawApiKey: string | undefined): string {
 	const value = rawApiKey?.trim() ?? '';
-	if (value.length === 0 || value === DEFAULT_API_KEY) {
-		return getGeneratedApiKey();
-	}
-	return value;
+	return isApiKeyUnconfigured(rawApiKey) ? getGeneratedApiKey() : value;
 }
 
 export function isApiKeyUnconfigured(rawApiKey: string | undefined): boolean {
