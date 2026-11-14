@@ -5,3 +5,10 @@ out/
 .DS_Store
 .tsbuildinfo
 .env
+.env.*
+
+# Agent tooling and local workspace state (never commit to public repos)
+.zcode/
+.zwork/
+.claude/
+.agents/
