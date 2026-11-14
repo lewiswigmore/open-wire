@@ -321,17 +321,21 @@ src/
   routes/
     chat.ts             vscode binding + orchestration
     content.ts          message/content normalisation, image parts
+    envelope.ts         response ids, timestamps, chunk framing, error body
     params.ts           sampling params, capability classification
     json-mode.ts        response_format enforcement
     schema.ts           JSON Schema subset validator
     tool-calls.ts       tool mapping, tool_choice, XML fallback
     legacy.ts           text_completion shape for /v1/completions
     errors.ts           RequestError with an HTTP status
+    sse.ts              server-sent event framing
   server/
     config.ts           settings loader
     gateway.ts          HTTP server, routing, middleware
   ui/
     sidebar.ts          webview sidebar panel
+  util/
+    object.ts           plain-object and own-property checks
   test/
     vscode-mock.ts      in-memory vscode stand-in for tests
     gateway.test.ts     end-to-end HTTP tests

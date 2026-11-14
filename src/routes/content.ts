@@ -295,6 +295,11 @@ function validateToolCalls(raw: unknown, messageIndex: number): void {
 	}
 }
 
+/** Build a normalized message carrying a single text part. */
+function textMessage(role: Role, text: string): NormalizedMessage {
+	return { role, parts: [{ kind: 'text', text }], text };
+}
+
 /** Inject a default system prompt when the request has no system message. */
 export function injectSystemPrompt(
 	msgs: NormalizedMessage[],
@@ -302,10 +307,7 @@ export function injectSystemPrompt(
 ): NormalizedMessage[] {
 	if (!prompt) return msgs;
 	if (msgs.some(m => m.role === 'system')) return msgs;
-	return [
-		{ role: 'system', parts: [{ kind: 'text', text: prompt }], text: prompt },
-		...msgs,
-	];
+	return [textMessage('system', prompt), ...msgs];
 }
 
 /** Append a trailing instruction as its own user turn. */
@@ -314,8 +316,5 @@ export function appendInstruction(
 	instruction: string,
 ): NormalizedMessage[] {
 	if (!instruction) return msgs;
-	return [
-		...msgs,
-		{ role: 'user', parts: [{ kind: 'text', text: instruction }], text: instruction },
-	];
+	return [...msgs, textMessage('user', instruction)];
 }
