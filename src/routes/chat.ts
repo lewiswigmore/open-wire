@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import * as vscode from 'vscode';
 import { discoverModels, findModel, resolveModelId } from '../models';
@@ -11,6 +10,13 @@ import {
 	type ContentPart,
 	type NormalizedMessage,
 } from './content';
+import {
+	chunkChoice,
+	chunkEnvelope,
+	completionId,
+	unixSeconds,
+	type ChunkEnvelope,
+} from './envelope';
 import { RequestError, badRequest } from './errors';
 import {
 	buildJsonInstruction,
@@ -128,7 +134,8 @@ function toVscodeMessages(msgs: NormalizedMessage[]): vscode.LanguageModelChatMe
 interface PreparedRequest {
 	modelId: string;
 	lm: vscode.LanguageModelChat;
-	messages: NormalizedMessage[];
+	/** The conversation in the VS Code representation, built once. */
+	vscodeMessages: vscode.LanguageModelChatMessage[];
 	options: vscode.LanguageModelChatRequestOptions;
 	format: ResponseFormat;
 	report: ParamReport;
@@ -193,7 +200,14 @@ async function prepareRequest(payload: any, config: ServerConfig): Promise<Prepa
 			: vscode.LanguageModelChatToolMode.Auto;
 	}
 
-	return { modelId, lm, messages, options, format, report };
+	return {
+		modelId,
+		lm,
+		vscodeMessages: toVscodeMessages(messages),
+		options,
+		format,
+		report,
+	};
 }
 
 interface ModelTurn {
@@ -249,7 +263,7 @@ async function runWithJsonEnforcement(
 	token: vscode.CancellationToken,
 ): Promise<ModelTurn> {
 	const { lm, options, format } = prepared;
-	let conversation = toVscodeMessages(prepared.messages);
+	let conversation = prepared.vscodeMessages;
 	let lastReason = 'unknown';
 	let lastOutput = '';
 
@@ -332,14 +346,13 @@ export async function processChatCompletion(
 
 	try {
 		const turn = await runWithJsonEnforcement(prepared, config, cts.token);
-		const lmMessages = toVscodeMessages(prepared.messages);
-		const usage = await countUsage(prepared.lm, lmMessages, turn.content, cts.token);
+		const usage = await countUsage(prepared.lm, prepared.vscodeMessages, turn.content, cts.token);
 
 		const hasTools = turn.toolCalls.length > 0;
 		const result = {
-			id: `chatcmpl-${randomUUID()}`,
+			id: completionId(),
 			object: 'chat.completion',
-			created: Math.floor(Date.now() / 1000),
+			created: unixSeconds(),
 			model: prepared.modelId,
 			choices: [{
 				index: 0,
@@ -364,54 +377,44 @@ export async function processChatCompletion(
 /** Emit one assistant content delta; the first delta carries the role. */
 function writeContentDelta(
 	res: ServerResponse,
-	base: object,
+	base: ChunkEnvelope,
 	content: string,
 	includeRole: boolean,
 ): void {
 	sseChunk(res, {
 		...base,
-		choices: [{
-			index: 0,
-			delta: {
-				...(includeRole ? { role: 'assistant' as const } : {}),
-				content,
-			},
-			finish_reason: null,
-		}],
+		choices: [
+			chunkChoice(includeRole ? { role: 'assistant', content } : { content }),
+		],
 	});
 }
 
 /** Emit one tool-call delta; `index` positions the call within the stream. */
 function writeToolCallDelta(
 	res: ServerResponse,
-	base: object,
+	base: ChunkEnvelope,
 	index: number,
 	call: ParsedToolCall,
 	includeRole: boolean,
 ): void {
+	const toolCall = { index, id: call.id, type: 'function', function: call.function };
 	sseChunk(res, {
 		...base,
-		choices: [{
-			index: 0,
-			delta: {
-				...(includeRole ? { role: 'assistant' as const } : {}),
-				tool_calls: [{ index, id: call.id, type: 'function', function: call.function }],
-			},
-			finish_reason: null,
-		}],
+		choices: [
+			chunkChoice(includeRole
+				? { role: 'assistant', tool_calls: [toolCall] }
+				: { tool_calls: [toolCall] }),
+		],
 	});
 }
 
 /** Close the choice with the reason the stream stopped. */
 function writeFinishChunk(
 	res: ServerResponse,
-	base: object,
+	base: ChunkEnvelope,
 	finishReason: 'stop' | 'tool_calls',
 ): void {
-	sseChunk(res, {
-		...base,
-		choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
-	});
+	sseChunk(res, { ...base, choices: [chunkChoice({}, finishReason)] });
 }
 
 /** Streaming chat completion via SSE */
@@ -426,14 +429,13 @@ export async function processStreamingChatCompletion(
 	const prepared = await prepareRequest(payload, config);
 	const includeUsage = wantsStreamUsage(payload);
 
-	const requestId = `chatcmpl-${randomUUID()}`;
-	const created = Math.floor(Date.now() / 1000);
+	const base = chunkEnvelope(prepared.modelId);
 
 	res.writeHead(200, {
 		'Content-Type': 'text/event-stream',
 		'Cache-Control': 'no-cache',
 		'Connection': 'keep-alive',
-		'X-Request-Id': requestId,
+		'X-Request-Id': base.id,
 	});
 
 	const cts = new vscode.CancellationTokenSource();
@@ -443,7 +445,6 @@ export async function processStreamingChatCompletion(
 		if (!res.writableEnded) res.write(': ping\n\n');
 	}, 15_000);
 
-	const base = { id: requestId, object: 'chat.completion.chunk', created, model: prepared.modelId };
 	let completionText = '';
 
 	// Mirror the non-streaming x_openwire report. Without this, unsupported
@@ -474,7 +475,7 @@ export async function processStreamingChatCompletion(
 			writeFinishChunk(res, base, hasTools ? 'tool_calls' : 'stop');
 		} else {
 			const response = await prepared.lm.sendRequest(
-				toVscodeMessages(prepared.messages),
+				prepared.vscodeMessages,
 				prepared.options,
 				cts.token,
 			);
@@ -505,7 +506,7 @@ export async function processStreamingChatCompletion(
 		if (includeUsage) {
 			const usage = await countUsage(
 				prepared.lm,
-				toVscodeMessages(prepared.messages),
+				prepared.vscodeMessages,
 				completionText,
 				cts.token,
 			);

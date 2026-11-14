@@ -7,6 +7,7 @@ import { isOriginAllowed } from './security';
 import { listModels, setDiscoveryLogger } from '../models';
 import { processChatCompletion, processStreamingChatCompletion, supportsImageInput } from '../routes/chat';
 import { SUPPORTED_IMAGE_MIME_TYPES } from '../routes/content';
+import { errorEnvelope } from '../routes/envelope';
 import { legacyStreamResponse, toLegacyCompletion } from '../routes/legacy';
 import { FORWARDED_PARAMS, HONOURED_PARAMS, UNSUPPORTED_PARAMS } from '../routes/params';
 import { SUPPORTED_SCHEMA_KEYWORDS } from '../routes/schema';
@@ -390,9 +391,7 @@ export class Gateway implements vscode.Disposable {
 	}
 
 	private sendError(res: ServerResponse, status: number, message: string): void {
-		this.sendJson(res, status, {
-			error: { message, type: 'api_error', code: status },
-		});
+		this.sendJson(res, status, errorEnvelope(message, 'api_error', status));
 	}
 
 	private setCors(req: IncomingMessage, res: ServerResponse): boolean {

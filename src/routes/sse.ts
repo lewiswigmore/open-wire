@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'http';
+import { errorEnvelope } from './envelope';
 
 /**
  * Transport-level SSE framing shared by the chat pipeline and the gateway.
@@ -21,6 +22,6 @@ export function sseDone(res: ServerResponse): void {
  * Writing a bare JSON body here would corrupt the event stream.
  */
 export function writeSseError(res: ServerResponse, message: string, code?: number): void {
-	sseChunk(res, { error: { message, type: 'server_error', ...(code ? { code } : {}) } });
+	sseChunk(res, errorEnvelope(message, 'server_error', code));
 	sseDone(res);
 }

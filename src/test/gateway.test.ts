@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { request as httpRequest } from 'http';
+import { request as httpRequest, type IncomingMessage } from 'http';
 import type { AddressInfo } from 'net';
 import { Gateway } from '../server/gateway';
 import {
@@ -51,6 +51,27 @@ function post(path: string, body: unknown, key = API_KEY): Promise<Response> {
 
 function get(path: string, key = API_KEY): Promise<Response> {
 	return fetch(`${baseUrl}${path}`, { headers: { Authorization: `Bearer ${key}` } });
+}
+
+/** A chat request body for the scripted test model. */
+function chatBody(content = 'x'): Record<string, unknown> {
+	return { model: 'test-model', messages: [{ role: 'user', content }] };
+}
+
+/** Assert the status and message of an error response. */
+async function expectApiError(res: Response, status: number, pattern: RegExp): Promise<void> {
+	expect(res.status).toBe(status);
+	expect((await res.json() as any).error.message).toMatch(pattern);
+}
+
+/** Read a raw http response as text; fetch cannot drive these upload cases. */
+function readRawBody(res: IncomingMessage): Promise<string> {
+	return new Promise(resolve => {
+		let body = '';
+		res.setEncoding('utf8');
+		res.on('data', chunk => { body += chunk; });
+		res.on('end', () => resolve(body));
+	});
 }
 
 /** Parse an SSE body into its decoded data frames. */
@@ -109,8 +130,7 @@ describe('auth and routing', () => {
 		await gateway?.stop();
 		await startGateway({ maxRequestBodyMb: 1 });
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x'.repeat(2 * 1024 * 1024) }],
+			...chatBody('x'.repeat(2 * 1024 * 1024)),
 		});
 		expect(res.status).toBe(413);
 		expect((await res.json() as any).error.message).toBe('Payload too large');
@@ -131,10 +151,7 @@ describe('auth and routing', () => {
 				},
 			}, res => {
 				receivedResponse = true;
-				let body = '';
-				res.setEncoding('utf8');
-				res.on('data', chunk => { body += chunk; });
-				res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+				void readRawBody(res).then(body => resolve({ status: res.statusCode ?? 0, body }));
 			});
 			req.on('error', err => { if (!receivedResponse) reject(err); });
 			req.write('{"incomplete":');
@@ -163,10 +180,7 @@ describe('auth and routing', () => {
 				}, res => {
 					receivedResponse = true;
 					if (pendingError) clearTimeout(pendingError);
-					let body = '';
-					res.setEncoding('utf8');
-					res.on('data', chunk => { body += chunk; });
-					res.on('end', () => resolve({
+					void readRawBody(res).then(body => resolve({
 						status: res.statusCode ?? 0,
 						body,
 						connection: res.headers.connection,
@@ -222,7 +236,7 @@ describe('chat completions', () => {
 	it('returns assistant content', async () => {
 		queueText('hello there');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'hi' }],
+			...chatBody('hi'),
 		})).json() as any;
 
 		expect(body.object).toBe('chat.completion');
@@ -240,15 +254,13 @@ describe('chat completions', () => {
 		}, /image parts are only supported/],
 	])('returns 400 for malformed message %#', async (message, error) => {
 		const res = await post('/v1/chat/completions', { model: 'test-model', messages: [message] });
-		expect(res.status).toBe(400);
-		expect((await res.json() as any).error.message).toMatch(error);
+		await expectApiError(res, 400, error);
 	});
 
 	it('returns native tool calls', async () => {
 		queueTurns([new LanguageModelToolCallPart('call_1', 'lookup', { q: 'x' })]);
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'hi' }],
+			...chatBody('hi'),
 			tools: [{ type: 'function', function: { name: 'lookup' } }],
 		})).json() as any;
 
@@ -260,7 +272,7 @@ describe('chat completions', () => {
 	it('converts an XML function_calls block into tool_calls', async () => {
 		queueText('<function_calls>\n<invoke name="exec">\n<parameter name="cmd">ls</parameter>\n</invoke>\n</function_calls>');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'hi' }],
+			...chatBody('hi'),
 		})).json() as any;
 		expect(body.choices[0].message.tool_calls[0].function.name).toBe('exec');
 	});
@@ -268,7 +280,7 @@ describe('chat completions', () => {
 	it('surfaces model failures as a 500', async () => {
 		failNextRequest();
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'hi' }],
+			...chatBody('hi'),
 		});
 		expect(res.status).toBe(500);
 	});
@@ -289,8 +301,7 @@ describe('sampling parameters', () => {
 	it('forwards sampling params to the model via modelOptions', async () => {
 		queueText('ok');
 		await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'hi' }],
+			...chatBody('hi'),
 			temperature: 0.1,
 			top_p: 0.5,
 			max_tokens: 64,
@@ -307,8 +318,7 @@ describe('sampling parameters', () => {
 	it('maps max_completion_tokens onto max_tokens', async () => {
 		queueText('ok');
 		await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'hi' }],
+			...chatBody('hi'),
 			max_completion_tokens: 128,
 		});
 		expect(recordedRequests()[0].options.modelOptions).toEqual({ max_tokens: 128 });
@@ -316,15 +326,16 @@ describe('sampling parameters', () => {
 
 	it('rejects an out-of-range temperature instead of ignoring it', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'hi' }], temperature: 9,
+			...chatBody('hi'),
+			temperature: 9,
 		});
-		expect(res.status).toBe(400);
-		expect((await res.json() as any).error.message).toMatch(/temperature must be between/);
+		await expectApiError(res, 400, /temperature must be between/);
 	});
 
 	it('rejects n > 1', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'hi' }], n: 4,
+			...chatBody('hi'),
+			n: 4,
 		});
 		expect(res.status).toBe(400);
 	});
@@ -335,8 +346,7 @@ describe('parameter honesty', () => {
 		await startGateway();
 		queueText('ok');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'hi' }],
+			...chatBody('hi'),
 			logprobs: true,
 			wibble: 1,
 		})).json() as any;
@@ -349,7 +359,8 @@ describe('parameter honesty', () => {
 		await startGateway();
 		queueText('ok');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'hi' }], temperature: 0.5,
+			...chatBody('hi'),
+			temperature: 0.5,
 		})).json() as any;
 		expect(body.x_openwire).toBeUndefined();
 	});
@@ -357,10 +368,10 @@ describe('parameter honesty', () => {
 	it('rejects unsupported params when strictParams is on', async () => {
 		await startGateway({ strictParams: true });
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'hi' }], logprobs: true,
+			...chatBody('hi'),
+			logprobs: true,
 		});
-		expect(res.status).toBe(400);
-		expect((await res.json() as any).error.message).toMatch(/Unsupported parameter/);
+		await expectApiError(res, 400, /Unsupported parameter/);
 	});
 });
 
@@ -370,8 +381,7 @@ describe('response_format enforcement', () => {
 	it('recovers JSON from a fenced block with leading prose', async () => {
 		queueText('I\'ll analyze that now.\n\n```json\n{"findings": [], "ok": true}\n```');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'audit this' }],
+			...chatBody('audit this'),
 			response_format: { type: 'json_object' },
 		})).json() as any;
 
@@ -382,8 +392,7 @@ describe('response_format enforcement', () => {
 	it('recovers a raw JSON object preceded by prose', async () => {
 		queueText('Here is my assessment:\n{"severity":"low"}');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: { type: 'json_object' },
 		})).json() as any;
 		expect(JSON.parse(body.choices[0].message.content)).toEqual({ severity: 'low' });
@@ -392,8 +401,7 @@ describe('response_format enforcement', () => {
 	it('appends a strict instruction to the conversation', async () => {
 		queueText('{"a":1}');
 		await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: { type: 'json_object' },
 		});
 		const sent = recordedRequests()[0].messages;
@@ -403,8 +411,7 @@ describe('response_format enforcement', () => {
 	it('retries once when the first reply has no JSON at all', async () => {
 		queueText('I am unable to comply.', '{"ok":true}');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: { type: 'json_object' },
 		})).json() as any;
 
@@ -417,12 +424,10 @@ describe('response_format enforcement', () => {
 	it('fails with 502 rather than returning prose that is not JSON', async () => {
 		queueText('nope', 'still nope');
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: { type: 'json_object' },
 		});
-		expect(res.status).toBe(502);
-		expect((await res.json() as any).error.message).toMatch(/did not return valid JSON/);
+		await expectApiError(res, 502, /did not return valid JSON/);
 	});
 
 	it('honours a jsonModeMaxRetries of 0', async () => {
@@ -430,8 +435,7 @@ describe('response_format enforcement', () => {
 		await startGateway({ jsonModeMaxRetries: 0 });
 		queueText('nope', '{"ok":true}');
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: { type: 'json_object' },
 		});
 		expect(res.status).toBe(502);
@@ -441,8 +445,7 @@ describe('response_format enforcement', () => {
 	it('enforces a json_schema', async () => {
 		queueText('{"ok":"yes"}', '{"ok":true}');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: {
 				type: 'json_schema',
 				json_schema: {
@@ -458,21 +461,18 @@ describe('response_format enforcement', () => {
 
 	it('rejects a schema with keywords it cannot enforce', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: {
 				type: 'json_schema',
 				json_schema: { name: 'r', schema: { type: 'object', oneOf: [] } },
 			},
 		});
-		expect(res.status).toBe(400);
-		expect((await res.json() as any).error.message).toMatch(/Unsupported JSON Schema keyword/);
+		await expectApiError(res, 400, /Unsupported JSON Schema keyword/);
 	});
 
 	it('rejects an unsupported response_format type', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			response_format: { type: 'yaml' },
 		});
 		expect(res.status).toBe(400);
@@ -481,8 +481,7 @@ describe('response_format enforcement', () => {
 	it('does not apply JSON validation when the model returns a tool call', async () => {
 		queueTurns([new LanguageModelToolCallPart('c1', 'lookup', {})]);
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model',
-			messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			tools: [{ type: 'function', function: { name: 'lookup' } }],
 			response_format: { type: 'json_object' },
 		})).json() as any;
@@ -502,7 +501,7 @@ describe('tool_choice', () => {
 	it('drops tools entirely for "none"', async () => {
 		queueText('ok');
 		await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			tools, tool_choice: 'none',
 		});
 		expect(recordedRequests()[0].options.tools).toBeUndefined();
@@ -511,7 +510,7 @@ describe('tool_choice', () => {
 	it('narrows to a single named tool and marks it required', async () => {
 		queueText('ok');
 		await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			tools, tool_choice: { type: 'function', function: { name: 'beta' } },
 		});
 		const options = recordedRequests()[0].options;
@@ -522,7 +521,8 @@ describe('tool_choice', () => {
 	it('forwards all tools in auto mode', async () => {
 		queueText('ok');
 		await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }], tools,
+			...chatBody('x'),
+			tools,
 		});
 		expect(recordedRequests()[0].options.toolMode).toBe(1);
 		expect(recordedRequests()[0].options.tools).toHaveLength(2);
@@ -530,7 +530,7 @@ describe('tool_choice', () => {
 
 	it('rejects a named tool that was not supplied', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			tools, tool_choice: { type: 'function', function: { name: 'gamma' } },
 		});
 		expect(res.status).toBe(400);
@@ -538,20 +538,18 @@ describe('tool_choice', () => {
 
 	it('rejects required tool choice when no tools were supplied', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			tool_choice: 'required',
 		});
-		expect(res.status).toBe(400);
-		expect((await res.json() as any).error.message).toMatch(/at least one tool/);
+		await expectApiError(res, 400, /at least one tool/);
 	});
 
 	it('rejects a malformed tools value instead of silently dropping it', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			tools: { type: 'function', function: { name: 'alpha' } },
 		});
-		expect(res.status).toBe(400);
-		expect((await res.json() as any).error.message).toMatch(/tools must be an array/);
+		await expectApiError(res, 400, /tools must be an array/);
 	});
 });
 
@@ -583,8 +581,7 @@ describe('images', () => {
 		const res = await post('/v1/chat/completions', {
 			model: 'test-model', messages: [imageMessage],
 		});
-		expect(res.status).toBe(501);
-		expect((await res.json() as any).error.message).toMatch(/1\.125/);
+		await expectApiError(res, 501, /1\.125/);
 	});
 
 	it('rejects remote image URLs', async () => {
@@ -596,8 +593,7 @@ describe('images', () => {
 				content: [{ type: 'image_url', image_url: { url: 'https://example.com/a.png' } }],
 			}],
 		});
-		expect(res.status).toBe(400);
-		expect((await res.json() as any).error.message).toMatch(/Remote image URLs/);
+		await expectApiError(res, 400, /Remote image URLs/);
 	});
 });
 
@@ -607,7 +603,8 @@ describe('streaming', () => {
 	it('streams text deltas and terminates cleanly', async () => {
 		queueTurns([new LanguageModelTextPart('Hel'), new LanguageModelTextPart('lo')]);
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }], stream: true,
+			...chatBody('x'),
+			stream: true,
 		});
 		const body = await res.text();
 
@@ -622,7 +619,7 @@ describe('streaming', () => {
 	it('streams tool calls', async () => {
 		queueTurns([new LanguageModelToolCallPart('c1', 'lookup', { a: 1 })]);
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			tools: [{ type: 'function', function: { name: 'lookup' } }], stream: true,
 		})).text();
 
@@ -634,7 +631,7 @@ describe('streaming', () => {
 	it('emits a usage chunk when include_usage is set', async () => {
 		queueText('hello');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			stream: true, stream_options: { include_usage: true },
 		})).text();
 
@@ -646,7 +643,8 @@ describe('streaming', () => {
 	it('omits usage by default', async () => {
 		queueText('hello');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }], stream: true,
+			...chatBody('x'),
+			stream: true,
 		})).text();
 		expect(sseFrames(body).some(f => f.usage)).toBe(false);
 	});
@@ -655,7 +653,7 @@ describe('streaming', () => {
 	it('reports unsupported params in a metadata frame', async () => {
 		queueText('hello');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			stream: true, logprobs: true, wibble: 1,
 		})).text();
 
@@ -671,7 +669,8 @@ describe('streaming', () => {
 	it('omits the metadata frame when everything was honoured', async () => {
 		queueText('hello');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }], stream: true,
+			...chatBody('x'),
+			stream: true,
 		})).text();
 		expect(sseFrames(body).some(f => f.x_openwire)).toBe(false);
 	});
@@ -679,7 +678,7 @@ describe('streaming', () => {
 	it('buffers JSON mode into a single valid delta', async () => {
 		queueText('Sure!\n```json\n{"a":1}\n```');
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			stream: true, response_format: { type: 'json_object' },
 		})).text();
 
@@ -691,7 +690,7 @@ describe('streaming', () => {
 
 	it('reports a validation failure as a real status code, not a 200 stream', async () => {
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 			stream: true, temperature: 99,
 		});
 		expect(res.status).toBe(400);
@@ -700,7 +699,8 @@ describe('streaming', () => {
 	it('emits mid-stream errors as a well-formed SSE frame', async () => {
 		failNextRequest();
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }], stream: true,
+			...chatBody('x'),
+			stream: true,
 		})).text();
 
 		const frames = sseFrames(body);
@@ -715,7 +715,8 @@ describe('request timeout', () => {
 		setResponseDelay(2000);
 
 		const body = await (await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }], stream: true,
+			...chatBody('x'),
+			stream: true,
 		})).text();
 
 		// Every frame must still parse: the old code wrote a bare JSON body here.
@@ -728,7 +729,7 @@ describe('request timeout', () => {
 		await startGateway({ requestTimeoutSeconds: 0.15 });
 		setResponseDelay(2000);
 		const res = await post('/v1/chat/completions', {
-			model: 'test-model', messages: [{ role: 'user', content: 'x' }],
+			...chatBody('x'),
 		});
 		expect(res.status).toBe(504);
 	});
@@ -796,8 +797,7 @@ describe('model discovery guard', () => {
 		const res = await get('/v1/models');
 		const elapsedMs = Date.now() - started;
 
-		expect(res.status).toBe(503);
-		expect((await res.json() as any).error.message).toMatch(/Model discovery timed out/);
+		await expectApiError(res, 503, /Model discovery timed out/);
 		expect(elapsedMs).toBeLessThan(5_000);
 		expect(recordedOutput().join('\n')).toMatch(/did not resolve within 150ms/);
 	});
@@ -841,8 +841,7 @@ describe('model discovery guard', () => {
 		failDiscovery(new Error('provider exploded'));
 		const res = await get('/v1/models');
 
-		expect(res.status).toBe(500);
-		expect((await res.json() as any).error.message).toMatch(/provider exploded/);
+		await expectApiError(res, 500, /provider exploded/);
 		expect(recordedOutput().join('\n')).toMatch(/selectChatModels\(\) failed/);
 	});
 });
