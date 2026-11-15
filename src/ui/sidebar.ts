@@ -411,6 +411,7 @@ section + section { margin-top: var(--space-lg); }
 	font-size: 10px;
 	padding: 0 0 var(--space-xs);
 }
+.model-table-head > :first-child { padding-left: 10px; }
 .model-table-head > :not(:first-child) { text-align: center; }
 
 .model-groups { display: flex; flex-direction: column; gap: 2px; }
