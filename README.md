@@ -392,7 +392,8 @@ whatever base branch it targets, so stacked branches are covered too.
 To cut a release:
 
 1. Update `CHANGELOG.md` with the release notes, bump `version` in
-   `package.json`, and merge those changes to `main`.
+   `package.json`, keep `package-lock.json` aligned, and merge those changes
+   to `main`.
 2. Tag the merge commit as `vX.Y.Z`, matching the version you just set.
 3. Push the tag.
 
