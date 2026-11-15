@@ -385,13 +385,15 @@ together.
 ## Releasing
 
 CI runs lint, build and test on Node 20 and 22, and packages the extension once
-on Node 20. The `.vsix` from that run is uploaded as a build artifact, so you
+on Node 22. The `.vsix` from that run is uploaded as a build artifact, so you
 can install a branch build before it ships. It runs on every pull request
 whatever base branch it targets, so stacked branches are covered too.
 
 To cut a release:
 
-1. Bump `version` in `package.json`, keep `package-lock.json` aligned, and merge that to `main`.
+1. Update `CHANGELOG.md` with the release notes, bump `version` in
+   `package.json`, keep `package-lock.json` aligned, and merge those changes
+   to `main`.
 2. Tag the merge commit as `vX.Y.Z`, matching the version you just set.
 3. Push the tag.
 
@@ -399,8 +401,11 @@ The Release workflow checks the tag against the version in `package.json` and
 stops if they disagree. It then runs lint, build and test, packages a single
 `.vsix`, publishes that exact file to the VS Code Marketplace, attaches it
 to a GitHub release, and publishes the same file to OpenVSX. Marketplace
-publishing needs a `VSCE_PAT` repository secret; OpenVSX publishing needs
-`OPENVSX_PAT` and is skipped when that secret is absent.
+publishing uses a [Trusted Publishing policy](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#publish-with-github-actions-and-trusted-publishing)
+for this repository and `release.yml`. OpenVSX publishing needs an
+`OPENVSX_PAT` repository secret and is skipped when that secret is absent.
+Keep the existing `VSCE_PAT` secret until the first trusted publish succeeds;
+the workflow does not automatically fall back to it if trusted publishing fails.
 
 One-time OpenVSX setup: sign in at [open-vsx.org](https://open-vsx.org) with
 your GitHub account, create the `lewiswigmore` namespace, generate a personal
