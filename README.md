@@ -391,7 +391,7 @@ whatever base branch it targets, so stacked branches are covered too.
 
 To cut a release:
 
-1. Bump `version` in `package.json` and merge that to `main`.
+1. Bump `version` in `package.json`, keep `package-lock.json` aligned, and merge that to `main`.
 2. Tag the merge commit as `vX.Y.Z`, matching the version you just set.
 3. Push the tag.
 
