@@ -2,9 +2,16 @@
 
 ## Unreleased
 
+## 0.7.0 - 2026-11-15
+
 ### Changed
 
 - Use trusted publishing for VS Code Marketplace releases.
+- Remove unavailable model price and speed indicators from the sidebar.
+
+### Fixed
+
+- Align model names in the sidebar.
 
 ## 0.6.0 - 2026-11-15
 
