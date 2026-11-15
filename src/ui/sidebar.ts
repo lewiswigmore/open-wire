@@ -446,8 +446,8 @@ section + section { margin-top: var(--space-lg); }
 
 .model-row {
 	min-height: 28px;
-	margin-left: 10px;
 }
+.model-row > :first-child { padding-left: 10px; }
 .model-id {
 	min-width: 0;
 	overflow: hidden;
