@@ -2,7 +2,7 @@
 	"name": "open-wire",
 	"displayName": "OpenWire",
 	"description": "Expose VS Code language models as an OpenAI-compatible REST API for agents and tools",
-	"version": "0.5.1",
+	"version": "0.6.0",
 	"publisher": "lewiswigmore",
 	"license": "MIT",
 	"icon": "media/icon.png",
@@ -100,7 +100,7 @@
 				"openWire.server.apiKey": {
 					"type": "string",
 					"default": "",
-					"description": "Bearer token required for request authentication. If left empty, a random key is generated per VS Code session (check the OpenWire output channel or sidebar for the active key). Set this to a fixed value if you need a stable key across restarts."
+					"description": "Bearer token required for request authentication. If left empty, a random key is generated per VS Code session (reveal or copy it in the OpenWire sidebar). Set this to a fixed value if you need a stable key across restarts."
 				},
 				"openWire.server.corsAllowedOrigins": {
 					"type": "array",
