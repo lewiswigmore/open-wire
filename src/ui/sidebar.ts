@@ -411,6 +411,7 @@ section + section { margin-top: var(--space-lg); }
 	font-size: 10px;
 	padding: 0 0 var(--space-xs);
 }
+.model-table-head > :first-child { padding-left: 10px; }
 .model-table-head > :not(:first-child) { text-align: center; }
 
 .model-groups { display: flex; flex-direction: column; gap: 2px; }
@@ -445,8 +446,8 @@ section + section { margin-top: var(--space-lg); }
 
 .model-row {
 	min-height: 28px;
-	margin-left: 10px;
 }
+.model-row > :first-child { padding-left: 10px; }
 .model-id {
 	min-width: 0;
 	overflow: hidden;
