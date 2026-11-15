@@ -163,9 +163,6 @@ ${getStyles()}
 		<button class="icon-btn" id="retry-models" type="button" aria-label="Retry model discovery" title="Retry model discovery" hidden>
 			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 0 6.32 4H12.6a5 5 0 1 1-1.1-1.45L9.5 5.5H15V0l-2.08 2.08A6.97 6.97 0 0 0 8 1Z"/></svg>
 		</button>
-		<div class="model-table-head" aria-hidden="true">
-			<span>Model</span><span title="Relative price tier">Cost</span><span title="Relative response speed">Speed</span><span></span>
-		</div>
 		<div class="model-groups" id="model-groups"></div>
 	</section>
 </div>
@@ -398,21 +395,12 @@ section + section { margin-top: var(--space-lg); }
 }
 .model-search::placeholder { color: var(--color-fg-muted); }
 
-.model-table-head,
 .model-row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 30px 38px 28px;
+	grid-template-columns: minmax(0, 1fr) 28px;
 	align-items: center;
 	gap: var(--space-xs);
 }
-
-.model-table-head {
-	color: var(--color-fg-muted);
-	font-size: 10px;
-	padding: 0 0 var(--space-xs);
-}
-.model-table-head > :first-child { padding-left: 10px; }
-.model-table-head > :not(:first-child) { text-align: center; }
 
 .model-groups { display: flex; flex-direction: column; gap: 2px; }
 .model-group > summary {
@@ -457,13 +445,6 @@ section + section { margin-top: var(--space-lg); }
 	font-size: 11px;
 }
 
-.rating {
-	text-align: center;
-	font-family: var(--vscode-editor-font-family, monospace);
-	font-size: 10px;
-	color: var(--color-fg-muted);
-}
-
 .model-status {
 	font-size: 12px;
 	color: var(--color-fg-muted);
@@ -473,7 +454,7 @@ section + section { margin-top: var(--space-lg); }
 
 .skeleton-row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 30px 38px 28px;
+	grid-template-columns: minmax(0, 1fr) 28px;
 	align-items: center;
 	gap: var(--space-xs);
 	min-height: 28px;
@@ -483,9 +464,6 @@ section + section { margin-top: var(--space-lg); }
 	border-radius: 2px;
 	background: var(--vscode-input-background, var(--vscode-editor-background, var(--color-bg)));
 }
-.skeleton-line.short { width: 14px; justify-self: center; }
-.skeleton-line.medium { width: 25px; justify-self: center; }
-
 button:focus-visible,
 input:focus-visible,
 summary:focus-visible {
@@ -520,7 +498,6 @@ const modelCount = $('model-count');
 const modelSearch = $('model-search');
 const modelStatus = $('model-status');
 const retryModelsBtn = $('retry-models');
-const modelTableHead = document.querySelector('.model-table-head');
 const modelGroups = $('model-groups');
 let currentState;
 let apiKeyRevealed = false;
@@ -597,7 +574,6 @@ function renderModels(state) {
 	modelStatus.className = 'model-status';
 	modelStatus.hidden = false;
 	modelSearch.hidden = models.length === 0;
-	modelTableHead.hidden = !state.modelsLoading && models.length === 0;
 	modelCount.textContent = state.modelsLoading || state.modelsError ? '' : String(models.length);
 
 	if (state.modelsLoading) {
@@ -606,7 +582,7 @@ function renderModels(state) {
 			const row = document.createElement('div');
 			row.className = 'skeleton-row';
 			row.setAttribute('aria-hidden', 'true');
-			row.innerHTML = '<span class="skeleton-line"></span><span class="skeleton-line short"></span><span class="skeleton-line medium"></span><span></span>';
+			row.innerHTML = '<span class="skeleton-line"></span><span></span>';
 			modelGroups.appendChild(row);
 		}
 		return;
@@ -670,22 +646,6 @@ function createModelRow(model) {
 	id.textContent = model.id;
 	id.title = model.id;
 
-	const cost = document.createElement('span');
-	cost.className = 'rating';
-	const costTiers = { low: '$', medium: '$$', high: '$$$' };
-	const costTier = costTiers[model.costTier];
-	cost.textContent = costTier || '—';
-	cost.title = costTier ? 'Relative cost: ' + model.costTier : 'Cost data unavailable';
-	cost.setAttribute('aria-label', cost.title);
-
-	const speed = document.createElement('span');
-	speed.className = 'rating';
-	const speedTiers = { fast: 'FAST', medium: 'MID', slow: 'SLOW' };
-	const speedTier = speedTiers[model.speedTier];
-	speed.textContent = speedTier || '—';
-	speed.title = speedTier ? 'Relative speed: ' + model.speedTier : 'Speed data unavailable';
-	speed.setAttribute('aria-label', speed.title);
-
 	const copy = document.createElement('button');
 	copy.className = 'icon-btn';
 	copy.type = 'button';
@@ -693,7 +653,7 @@ function createModelRow(model) {
 	copy.setAttribute('aria-label', 'Copy model ID ' + model.id);
 	copy.title = 'Copy model ID';
 	copy.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>';
-	row.append(id, cost, speed, copy);
+	row.append(id, copy);
 	return row;
 }
 

@@ -2,6 +2,7 @@
 .git/**
 .github/**
 .agents/**
+.impeccable/**
 out/**
 node_modules/**
 src/**

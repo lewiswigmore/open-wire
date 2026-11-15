@@ -10,8 +10,6 @@ export interface ModelInfo {
 	family: string;
 	version: string;
 	max_input_tokens: number;
-	costTier?: 'low' | 'medium' | 'high';
-	speedTier?: 'fast' | 'medium' | 'slow';
 }
 
 // `vscode.lm.selectChatModels()` normally resolves in milliseconds, but on
