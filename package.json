@@ -176,7 +176,7 @@
 		"test": "vitest run"
 	},
 	"devDependencies": {
-		"@types/node": "^26.6.6",
+		"@types/node": "^26.6.10",
 		"@types/vscode": "~1.95.0",
 		"@vscode/vsce": "^4.1.1",
 		"esbuild": "^0.28.2",
